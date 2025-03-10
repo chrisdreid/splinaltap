@@ -4,11 +4,13 @@
 import sys
 import argparse
 import json
+import os
 from typing import Dict, List, Optional, Tuple, Any
 import matplotlib.pyplot as plt
 
 from .interpolator import KeyframeInterpolator
 from .visualization import plot_interpolation_comparison, plot_single_interpolation
+from .scene import Scene
 
 try:
     import numpy as np
@@ -175,6 +177,69 @@ def sample_cmd(args: argparse.Namespace) -> None:
             print(value)
 
 
+def scene_info_cmd(args: argparse.Namespace) -> None:
+    """Handle the scene-info command."""
+    scene = Scene.load(args.input)
+    
+    print(f"Scene: {scene.name}")
+    print(f"Number of interpolators: {len(scene.interpolators)}")
+    print("\nMetadata:")
+    for key, value in scene.metadata.items():
+        print(f"  {key}: {value}")
+    
+    print("\nInterpolators:")
+    for name in scene.get_interpolator_names():
+        interpolator = scene.get_interpolator(name)
+        num_keyframes = len(interpolator.keyframes)
+        try:
+            time_range = interpolator.get_time_range()
+            time_info = f"time range: {time_range[0]} to {time_range[1]}"
+        except:
+            time_info = "no keyframes"
+            
+        print(f"  {name}: {num_keyframes} keyframes, {time_info}")
+        
+def scene_convert_cmd(args: argparse.Namespace) -> None:
+    """Handle the scene-convert command."""
+    scene = Scene.load(args.input)
+    
+    # Get format from output file if not specified
+    format = args.format
+    if format is None:
+        _, ext = os.path.splitext(args.output)
+        if ext in ('.json', '.pkl', '.pickle', '.py', '.yml', '.yaml', '.npz'):
+            format = None  # Let the save method determine it
+        else:
+            format = 'json'  # Default
+    
+    # Save to new format
+    scene.save(args.output, format=format)
+    print(f"Converted scene '{scene.name}' from {args.input} to {args.output}")
+
+def scene_extract_cmd(args: argparse.Namespace) -> None:
+    """Handle the scene-extract command."""
+    scene = Scene.load(args.input)
+    
+    # Check if the interpolator exists
+    if args.interpolator not in scene.interpolators:
+        print(f"Error: No interpolator named '{args.interpolator}' in the scene")
+        return 1
+    
+    interpolator = scene.get_interpolator(args.interpolator)
+    
+    # Create a new scene with just this interpolator
+    new_scene = Scene(name=f"{scene.name} - {args.interpolator}")
+    new_scene.add_interpolator(args.interpolator, interpolator)
+    
+    # Copy relevant metadata
+    if 'description' in scene.metadata:
+        new_scene.set_metadata('description', 
+                             f"Extracted from {scene.name}: {scene.metadata['description']}")
+    
+    # Save the new scene
+    new_scene.save(args.output)
+    print(f"Extracted interpolator '{args.interpolator}' from scene '{scene.name}' to {args.output}")
+
 def create_parser() -> argparse.ArgumentParser:
     """Create the command-line argument parser."""
     parser = argparse.ArgumentParser(description="Splinaltap - Keyframe interpolation tool")
@@ -208,6 +273,25 @@ def create_parser() -> argparse.ArgumentParser:
     sample_parser.add_argument("-c", "--channels", help="Channel values as name=value,name=value")
     sample_parser.add_argument("-r", "--time-range", help="Time range to sample (min,max)")
     
+    # Scene info command
+    scene_info_parser = subparsers.add_parser("scene-info", help="Display information about a scene")
+    scene_info_parser.add_argument("input", help="Input scene file")
+    
+    # Scene convert command
+    scene_convert_parser = subparsers.add_parser("scene-convert", help="Convert a scene file to a different format")
+    scene_convert_parser.add_argument("input", help="Input scene file")
+    scene_convert_parser.add_argument("output", help="Output scene file")
+    scene_convert_parser.add_argument("-f", "--format", 
+                                   choices=["json", "pickle", "python", "yaml", "numpy"],
+                                   help="Output format (if not specified, determined from file extension)")
+    
+    # Scene extract command
+    scene_extract_parser = subparsers.add_parser("scene-extract", 
+                                              help="Extract an interpolator from a scene to a new file")
+    scene_extract_parser.add_argument("input", help="Input scene file")
+    scene_extract_parser.add_argument("interpolator", help="Name of the interpolator to extract")
+    scene_extract_parser.add_argument("output", help="Output file for the extracted interpolator")
+    
     return parser
 
 
@@ -222,6 +306,12 @@ def main():
         evaluate_cmd(args)
     elif args.command == "sample":
         sample_cmd(args)
+    elif args.command == "scene-info":
+        scene_info_cmd(args)
+    elif args.command == "scene-convert":
+        scene_convert_cmd(args)
+    elif args.command == "scene-extract":
+        scene_extract_cmd(args)
     else:
         parser.print_help()
         return 1

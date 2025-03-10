@@ -6,6 +6,20 @@ from .interpolator import KeyframeInterpolator
 from .visualization import plot_interpolation_comparison, plot_single_interpolation
 import matplotlib.pyplot as plt
 
+try:
+    import numpy as np
+    HAS_NUMPY = True
+except ImportError:
+    np = None
+    HAS_NUMPY = False
+
+try:
+    import yaml
+    HAS_YAML = True
+except ImportError:
+    yaml = None
+    HAS_YAML = False
+
 def basic_interpolation_example():
     """Create a basic interpolation example with visualization."""
     # Create a KeyframeInterpolator instance with 10 indices
@@ -135,9 +149,95 @@ def time_based_example():
     
     return interpolator, values
 
+def scene_example():
+    """Example showing how to work with scenes that contain multiple interpolators."""
+    from .scene import Scene
+    import os
+    
+    # Create a scene
+    scene = Scene(name="AnimationScene")
+    scene.set_metadata("description", "An example animation scene")
+    scene.set_metadata("author", "Splinaltap")
+    
+    # Create and add multiple interpolators
+    
+    # Position X interpolator
+    position_x = KeyframeInterpolator()
+    position_x.set_keyframe(0.0, 0.0)
+    position_x.set_keyframe(1000.0, 100.0)
+    position_x.set_keyframe(2000.0, 50.0)
+    position_x.set_keyframe(3000.0, 75.0)
+    scene.add_interpolator("position_x", position_x)
+    
+    # Position Y interpolator
+    position_y = KeyframeInterpolator()
+    position_y.set_keyframe(0.0, 0.0)
+    position_y.set_keyframe(1000.0, "sin(t/100) * 50")
+    position_y.set_keyframe(2000.0, 100.0)
+    position_y.set_keyframe(3000.0, 25.0)
+    scene.add_interpolator("position_y", position_y)
+    
+    # Scale interpolator
+    scale = KeyframeInterpolator()
+    scale.set_keyframe(0.0, 1.0)
+    scale.set_keyframe(1500.0, 2.0)
+    scale.set_keyframe(3000.0, 0.5)
+    scene.add_interpolator("scale", scale)
+    
+    # Rotation interpolator with bezier control
+    rotation = KeyframeInterpolator()
+    rotation.set_keyframe(0.0, 0.0)
+    rotation.set_keyframe(1500.0, 180.0, control_points=(500.0, 20.0, 1000.0, 160.0))
+    rotation.set_keyframe(3000.0, 360.0)
+    scene.add_interpolator("rotation", rotation)
+    
+    # Save scene in different formats
+    temp_dir = "/tmp"
+    formats = [
+        ("json", "scene.json"), 
+        ("python", "scene.py"),
+        ("pickle", "scene.pkl")
+    ]
+    
+    # Add optional formats if available
+    if HAS_NUMPY:
+        formats.append(("numpy", "scene.npz"))
+    if HAS_YAML:
+        formats.append(("yaml", "scene.yaml"))
+    
+    saved_files = []
+    for format_name, filename in formats:
+        filepath = os.path.join(temp_dir, filename)
+        try:
+            scene.save(filepath, format=format_name)
+            saved_files.append(filepath)
+            print(f"Saved scene in {format_name} format to {filepath}")
+        except Exception as e:
+            print(f"Error saving in {format_name} format: {e}")
+    
+    # Load back the JSON version
+    if saved_files:
+        json_file = os.path.join(temp_dir, "scene.json")
+        loaded_scene = Scene.load(json_file)
+        print(f"Loaded scene: {loaded_scene.name}")
+        print(f"Metadata: {loaded_scene.metadata}")
+        print(f"Interpolator names: {loaded_scene.get_interpolator_names()}")
+        
+        # Sample all interpolators at a specific time
+        t = 1500.0
+        results = {}
+        for name in loaded_scene.get_interpolator_names():
+            interp = loaded_scene.get_interpolator(name)
+            results[name] = interp.get_value(t, "cubic")
+        
+        print(f"Values at t={t}ms: {results}")
+    
+    return scene
+
 if __name__ == "__main__":
     # Run all examples
     basic_interpolation_example()
     channels_example()
     bezier_control_points_example()
     time_based_example()
+    scene_example()
