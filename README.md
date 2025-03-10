@@ -31,11 +31,55 @@ The name "splinaltap" is a playful nod to the mockumentary "This Is Spinal Tap" 
 - 🎛️ **Channel Support**: Pass in dynamic channel values that can be used in expressions
 - 📊 **Visualization**: Built-in support for visualizing interpolation results
 - 🔒 **Safe Execution**: No unsafe `eval()` - all expressions are parsed and evaluated securely
+- 🚀 **GPU Acceleration**: Optional GPU support via CuPy or JAX for faster processing
 
 ## Installation
 
 ```bash
 pip install splinaltap
+```
+
+### Optional Dependencies
+
+For enhanced performance, you can install NumPy (CPU acceleration) or GPU acceleration libraries:
+
+```bash
+# For NumPy support (CPU acceleration)
+pip install numpy
+
+# For CUDA 11.x GPU support
+pip install cupy-cuda11x
+
+# For CUDA 12.x GPU support
+pip install cupy-cuda12x
+
+# For JAX support (GPU acceleration with autodiff)
+pip install "jax[cuda]" -f https://storage.googleapis.com/jax-releases/jax_cuda_releases.html
+```
+
+### Verifying CUDA Installation
+
+You can verify your CUDA installation is working properly with:
+
+```python
+import splinaltap
+from splinaltap.backends import BackendManager
+
+# Check available backends
+print(BackendManager.available_backends())  # Should include 'cupy' if installed correctly
+
+# Set backend to CuPy
+BackendManager.set_backend('cupy')
+
+# Create a sample and verify it's using GPU
+interpolator = splinaltap.KeyframeInterpolator(10)
+interpolator.set_keyframe(0.0, 0)
+interpolator.set_keyframe(10.0, 10)
+
+# Generate samples using GPU
+samples = interpolator.sample_with_gpu(0, 10, 1000)
+print(f"Backend used: {BackendManager.get_backend().name}")
+print(f"Supports GPU: {BackendManager.get_backend().supports_gpu}")
 ```
 
 ## Quick Start
@@ -106,6 +150,28 @@ values_2 = [interpolator.get_value(t, "cubic", channels_2) for t in t_values]
 ```python
 # Set keyframe with control points for Bezier interpolation
 interpolator.set_keyframe(4.0, 5.0, derivative=None, control_points=(4.2, 6.0, 4.8, 7.0))
+```
+
+### Using GPU Acceleration
+
+```python
+from splinaltap import KeyframeInterpolator
+from splinaltap.backends import BackendManager
+
+# Set backend to CuPy if available
+try:
+    BackendManager.set_backend('cupy')
+    print("Using CuPy GPU acceleration")
+except Exception:
+    print("CuPy not available, using fallback backend")
+
+# Create interpolator and keyframes
+interpolator = KeyframeInterpolator(10)
+interpolator.set_keyframe(0.0, 0)
+interpolator.set_keyframe(10.0, 10)
+
+# Generate 1 million samples efficiently using GPU
+samples = interpolator.sample_with_gpu(0, 10, 1_000_000)
 ```
 
 ## Applications
