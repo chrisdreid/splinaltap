@@ -1,13 +1,7 @@
-import math
 import ast
 from typing import Dict, Union, List, Callable, Tuple, Optional, Sequence, Any
 
-try:
-    import numpy as np
-    HAS_NUMPY = True
-except ImportError:
-    np = None
-    HAS_NUMPY = False
+from .backends import BackendManager, get_math_functions
 
 from .methods import (
     nearest_neighbor,
@@ -42,10 +36,19 @@ class KeyframeInterpolator:
 
     def _parse_expression(self, expr: str) -> Callable[[float, Dict[str, float]], float]:
         """Parse an expression into a safe lambda function."""
+        # Get math functions from the current backend
+        math_funcs = get_math_functions()
+        
         safe_dict = {
-            'sin': math.sin, 'cos': math.cos, 'tan': math.tan,
-            'sqrt': math.sqrt, 'log': math.log, 'exp': math.exp,
-            'pi': math.pi, 'e': math.e, 'pow': math.pow, 
+            'sin': math_funcs['sin'], 
+            'cos': math_funcs['cos'], 
+            'tan': math_funcs['tan'],
+            'sqrt': math_funcs['sqrt'], 
+            'log': math_funcs['log'], 
+            'exp': math_funcs['exp'],
+            'pi': math_funcs['pi'], 
+            'e': math_funcs['e'], 
+            'pow': math_funcs['pow'], 
             'T': self.num_indices if self.num_indices is not None else 0
         }
         tree = ast.parse(expr, mode='eval')
@@ -167,7 +170,7 @@ class KeyframeInterpolator:
         return methods[method](self, t, channels)
     
     def sample_range(self, start_time: float, end_time: float, num_samples: int, 
-                    method: str = "linear", channels: Dict[str, float] = {}) -> List[float]:
+                    method: str = "linear", channels: Dict[str, float] = {}) -> Union[List[float], Any]:
         """Sample values at evenly spaced intervals within a time range.
         
         Args:
@@ -178,19 +181,21 @@ class KeyframeInterpolator:
             channels: Dictionary of channel values to use in expressions
             
         Returns:
-            List of sampled values
+            Array of sampled values (using the current backend)
         """
         if num_samples < 2:
             raise ValueError("Number of samples must be at least 2")
-            
-        result = []
-        step = (end_time - start_time) / (num_samples - 1) if num_samples > 1 else 0
         
-        for i in range(num_samples):
-            t = start_time + i * step
-            result.append(self.get_value(t, method, channels))
-            
-        return result
+        # Create time values array using current backend
+        t_values = BackendManager.linspace(start_time, end_time, num_samples)
+        
+        # Create output array using current backend
+        output = BackendManager.zeros(num_samples)
+        
+        # Sample values
+        self.sample_to_array(output, start_time, end_time, method, channels)
+        
+        return output
         
     def sample_to_array(self, output_array: Union[List[float], Any], 
                       start_time: float, end_time: float, 
@@ -204,21 +209,85 @@ class KeyframeInterpolator:
             method: Interpolation method to use
             channels: Dictionary of channel values to use in expressions
         """
-        if HAS_NUMPY and isinstance(output_array, np.ndarray):
-            num_samples = len(output_array)
-            step = (end_time - start_time) / (num_samples - 1) if num_samples > 1 else 0
+        num_samples = len(output_array)
+        step = (end_time - start_time) / (num_samples - 1) if num_samples > 1 else 0
+        
+        # Simple implementation that works with any array type
+        for i in range(num_samples):
+            t = start_time + i * step
+            output_array[i] = self.get_value(t, method, channels)
             
-            for i in range(num_samples):
-                t = start_time + i * step
-                output_array[i] = self.get_value(t, method, channels)
-        else:
-            # Handling standard Python lists
-            num_samples = len(output_array)
-            step = (end_time - start_time) / (num_samples - 1) if num_samples > 1 else 0
+    def sample_with_gpu(self, start_time: float, end_time: float, num_samples: int,
+                      method: str = "linear", channels: Dict[str, float] = {}) -> Any:
+        """Sample values using GPU acceleration if available.
+        
+        This method attempts to use CuPy or JAX for GPU-accelerated sampling.
+        If neither is available, falls back to regular CPU sampling.
+        
+        Args:
+            start_time: Start time to sample from
+            end_time: End time to sample to
+            num_samples: Number of samples to generate
+            method: Interpolation method to use (only linear is supported for GPU)
+            channels: Dictionary of channel values to use in expressions
             
-            for i in range(num_samples):
-                t = start_time + i * step
-                output_array[i] = self.get_value(t, method, channels)
+        Returns:
+            Array of sampled values
+        """
+        # Check if we have a GPU-supporting backend available
+        current_backend = BackendManager.get_backend()
+        
+        if not current_backend.supports_gpu:
+            available_backends = BackendManager.available_backends()
+            gpu_backends = [name for name in available_backends 
+                          if BackendManager.get_backend(name).supports_gpu]
+            
+            if gpu_backends:
+                # Temporarily switch to a GPU backend
+                original_backend = BackendManager.get_backend().name
+                BackendManager.set_backend(gpu_backends[0])
+                result = None
+                
+                try:
+                    # Only linear interpolation is currently supported for GPU acceleration
+                    if method != "linear":
+                        raise ValueError(f"GPU acceleration only supports linear interpolation, not {method}")
+                    
+                    # Get keyframe points as arrays
+                    points = self._get_keyframe_points(channels)
+                    times = BackendManager.array([p[0] for p in points])
+                    values = BackendManager.array([p[1] for p in points])
+                    
+                    # Create sample times
+                    t_array = BackendManager.linspace(start_time, end_time, num_samples)
+                    result = BackendManager.zeros(num_samples)
+                    
+                    # For each sample point, find the bracketing keyframes and interpolate
+                    for i in range(num_samples):
+                        t = t_array[i]
+                        if t <= times[0]:
+                            result[i] = values[0]
+                        elif t >= times[-1]:
+                            result[i] = values[-1]
+                        else:
+                            # Find the indices of the keyframes that bracket this time
+                            for j in range(len(times) - 1):
+                                if times[j] <= t <= times[j + 1]:
+                                    # Linear interpolation
+                                    alpha = (t - times[j]) / (times[j + 1] - times[j])
+                                    result[i] = values[j] * (1 - alpha) + values[j + 1] * alpha
+                                    break
+                    
+                finally:
+                    # Restore the original backend
+                    BackendManager.set_backend(original_backend)
+                    
+                if result is not None:
+                    # Convert to the current backend's format
+                    return BackendManager.get_backend().to_native_array(result)
+            
+        # Fall back to regular sampling if GPU acceleration failed or is unavailable
+        return self.sample_range(start_time, end_time, num_samples, method, channels)
                 
     def get_time_range(self) -> Tuple[float, float]:
         """Get the time range covered by keyframes.

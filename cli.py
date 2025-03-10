@@ -11,6 +11,7 @@ import matplotlib.pyplot as plt
 from .interpolator import KeyframeInterpolator
 from .visualization import plot_interpolation_comparison, plot_single_interpolation
 from .scene import Scene
+from .backends import BackendManager
 
 try:
     import numpy as np
@@ -240,6 +241,55 @@ def scene_extract_cmd(args: argparse.Namespace) -> None:
     new_scene.save(args.output)
     print(f"Extracted interpolator '{args.interpolator}' from scene '{scene.name}' to {args.output}")
 
+def backend_cmd(args: argparse.Namespace) -> None:
+    """Handle the backend command."""
+    if args.list:
+        # List available backends
+        available = BackendManager.available_backends()
+        current = BackendManager.get_backend().name
+        
+        print("Available backends:")
+        for name in available:
+            backend = BackendManager.get_backend(name)
+            features = []
+            if backend.supports_gpu:
+                features.append("GPU")
+            if backend.supports_autodiff:
+                features.append("autodiff")
+                
+            feature_str = f" ({', '.join(features)})" if features else ""
+            current_marker = " [current]" if name == current else ""
+            
+            print(f"  {name}{feature_str}{current_marker}")
+            
+    elif args.info:
+        # Show info about current backend
+        backend = BackendManager.get_backend()
+        print(f"Current backend: {backend.name}")
+        print(f"GPU support: {'Yes' if backend.supports_gpu else 'No'}")
+        print(f"Autodiff support: {'Yes' if backend.supports_autodiff else 'No'}")
+        
+    elif args.use:
+        # Set backend
+        try:
+            BackendManager.set_backend(args.use)
+            print(f"Backend set to {args.use}")
+        except Exception as e:
+            print(f"Error setting backend: {e}")
+            return 1
+            
+    elif args.best:
+        # Use best available backend
+        original = BackendManager.get_backend().name
+        BackendManager.use_best_available()
+        new_backend = BackendManager.get_backend().name
+        print(f"Using best available backend: {new_backend} (was {original})")
+        
+    else:
+        # Default to showing current backend
+        backend = BackendManager.get_backend()
+        print(f"Current backend: {backend.name}")
+
 def create_parser() -> argparse.ArgumentParser:
     """Create the command-line argument parser."""
     parser = argparse.ArgumentParser(description="Splinaltap - Keyframe interpolation tool")
@@ -272,6 +322,7 @@ def create_parser() -> argparse.ArgumentParser:
     sample_parser.add_argument("-m", "--method", default="cubic", help="Interpolation method to use")
     sample_parser.add_argument("-c", "--channels", help="Channel values as name=value,name=value")
     sample_parser.add_argument("-r", "--time-range", help="Time range to sample (min,max)")
+    sample_parser.add_argument("--gpu", action="store_true", help="Use GPU acceleration if available")
     
     # Scene info command
     scene_info_parser = subparsers.add_parser("scene-info", help="Display information about a scene")
@@ -292,8 +343,72 @@ def create_parser() -> argparse.ArgumentParser:
     scene_extract_parser.add_argument("interpolator", help="Name of the interpolator to extract")
     scene_extract_parser.add_argument("output", help="Output file for the extracted interpolator")
     
+    # Backend command
+    backend_parser = subparsers.add_parser("backend", help="Manage compute backends")
+    backend_group = backend_parser.add_mutually_exclusive_group()
+    backend_group.add_argument("--list", action="store_true", help="List available backends")
+    backend_group.add_argument("--info", action="store_true", help="Show info about current backend")
+    backend_group.add_argument("--use", help="Set the active backend")
+    backend_group.add_argument("--best", action="store_true", help="Use the best available backend")
+    
     return parser
 
+
+def sample_cmd(args: argparse.Namespace) -> None:
+    """Handle the sample command."""
+    # Load data
+    with open(args.input, 'r') as f:
+        data = json.load(f)
+    
+    interpolator = create_keyframe_interpolator_from_json(data)
+    
+    # Parse channels if provided
+    channels = {}
+    if args.channels:
+        for channel_str in args.channels.split(','):
+            name, value = channel_str.split('=')
+            channels[name.strip()] = float(value.strip())
+    
+    # Get time range
+    if args.time_range:
+        t_min, t_max = map(float, args.time_range.split(','))
+    else:
+        t_min, t_max = interpolator.get_time_range()
+    
+    # Sample values, with GPU acceleration if requested
+    if args.gpu:
+        try:
+            values = interpolator.sample_with_gpu(t_min, t_max, args.samples, args.method, channels)
+            print("Using GPU acceleration")
+        except Exception as e:
+            print(f"GPU acceleration failed: {e}, falling back to CPU")
+            values = interpolator.sample_range(t_min, t_max, args.samples, args.method, channels)
+    else:
+        values = interpolator.sample_range(t_min, t_max, args.samples, args.method, channels)
+    
+    # Output result
+    if args.output:
+        if args.output.endswith('.json'):
+            with open(args.output, 'w') as f:
+                json.dump(BackendManager.to_numpy(values).tolist(), f)
+        elif args.output.endswith('.csv'):
+            with open(args.output, 'w') as f:
+                values_np = BackendManager.to_numpy(values)
+                for i, value in enumerate(values_np):
+                    t = t_min + i * (t_max - t_min) / (args.samples - 1)
+                    f.write(f"{t},{value}\n")
+        elif args.output.endswith('.npy') and HAS_NUMPY:
+            values_np = BackendManager.to_numpy(values)
+            np.save(args.output, values_np)
+        else:
+            with open(args.output, 'w') as f:
+                values_np = BackendManager.to_numpy(values)
+                for value in values_np:
+                    f.write(f"{value}\n")
+    else:
+        values_np = BackendManager.to_numpy(values)
+        for value in values_np:
+            print(value)
 
 def main():
     """Main entry point for the command-line interface."""
@@ -312,6 +427,8 @@ def main():
         scene_convert_cmd(args)
     elif args.command == "scene-extract":
         scene_extract_cmd(args)
+    elif args.command == "backend":
+        backend_cmd(args)
     else:
         parser.print_help()
         return 1

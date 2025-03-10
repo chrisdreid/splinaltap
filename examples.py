@@ -234,6 +234,59 @@ def scene_example():
     
     return scene
 
+def backends_example():
+    """Example demonstrating different compute backends."""
+    from .backends import BackendManager, PythonBackend, NumpyBackend, CupyBackend
+    import time
+    
+    # Create a large interpolation
+    interpolator = KeyframeInterpolator()
+    interpolator.set_keyframe(0.0, 0.0)
+    interpolator.set_keyframe(100.0, "sin(t/10)")
+    interpolator.set_keyframe(200.0, "sin(t/5) * cos(t/10)")
+    interpolator.set_keyframe(1000.0, 10.0)
+    
+    # Sample with different backends and measure performance
+    num_samples = 100000  # Large number to compare performance
+    
+    backends = []
+    if PythonBackend.is_available:
+        backends.append(("python", "Pure Python"))
+    if NumpyBackend.is_available:
+        backends.append(("numpy", "NumPy (CPU)"))
+    if CupyBackend.is_available:
+        backends.append(("cupy", "CuPy (GPU)"))
+    
+    for backend_name, label in backends:
+        # Set backend
+        BackendManager.set_backend(backend_name)
+        print(f"Using {label} backend:")
+        
+        # Time the sampling
+        start_time = time.time()
+        result = interpolator.sample_range(0.0, 1000.0, num_samples, method="linear")
+        end_time = time.time()
+        
+        # Report performance
+        elapsed = end_time - start_time
+        print(f"  Sampled {num_samples} points in {elapsed:.4f} seconds")
+        print(f"  {num_samples/elapsed:.0f} samples per second")
+        
+        # Print some sample values
+        samples = [0, 1000, 10000, 50000, 99999]
+        print("  Sample values:", end=" ")
+        try:
+            for idx in samples:
+                if idx < len(result):
+                    print(f"{float(result[idx]):.2f}", end=" ")
+        except Exception as e:
+            print(f"Error accessing results: {e}")
+        print()
+    
+    # Reset to best backend
+    BackendManager.use_best_available()
+    return interpolator
+
 if __name__ == "__main__":
     # Run all examples
     basic_interpolation_example()
@@ -241,3 +294,10 @@ if __name__ == "__main__":
     bezier_control_points_example()
     time_based_example()
     scene_example()
+    
+    # Only run backend examples if numpy is available
+    try:
+        import numpy
+        backends_example()
+    except ImportError:
+        print("Skipping backend examples (numpy not available)")

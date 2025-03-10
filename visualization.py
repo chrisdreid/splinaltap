@@ -2,6 +2,8 @@
 Visualization tools for the splinaltap library.
 """
 
+from .backends import BackendManager
+
 try:
     import matplotlib.pyplot as plt
     has_matplotlib = True
@@ -42,11 +44,19 @@ def plot_interpolation_comparison(interpolator, t_values, methods=None, channels
     keyframe_t = [p[0] for p in keyframe_points]
     keyframe_values = [p[1] for p in keyframe_points]
 
+    # Convert t_values to numpy for matplotlib if needed
+    t_values_np = BackendManager.to_numpy(t_values)
+
     fig = plt.figure(figsize=(12, 8))
     for method in methods:
         try:
-            values = [interpolator.get_value(t, method, channels) for t in t_values]
-            plt.plot(t_values, values, label=method.capitalize())
+            # Sample values using current backend
+            values = interpolator.sample_range(min(t_values), max(t_values), len(t_values), method, channels)
+            
+            # Convert to numpy for matplotlib if needed
+            values_np = BackendManager.to_numpy(values)
+            
+            plt.plot(t_values_np, values_np, label=method.capitalize())
         except Exception as e:
             print(f"Skipping {method} due to: {e}")
 
@@ -87,10 +97,17 @@ def plot_single_interpolation(interpolator, t_values, method="cubic", channels=N
     keyframe_t = [p[0] for p in keyframe_points]
     keyframe_values = [p[1] for p in keyframe_points]
     
-    values = [interpolator.get_value(t, method, channels) for t in t_values]
+    # Convert t_values to numpy for matplotlib if needed
+    t_values_np = BackendManager.to_numpy(t_values)
+    
+    # Sample values using current backend
+    values = interpolator.sample_range(min(t_values), max(t_values), len(t_values), method, channels)
+    
+    # Convert to numpy for matplotlib if needed
+    values_np = BackendManager.to_numpy(values)
     
     fig = plt.figure(figsize=(12, 6))
-    plt.plot(t_values, values, label=method.capitalize())
+    plt.plot(t_values_np, values_np, label=method.capitalize())
     plt.scatter(keyframe_t, keyframe_values, color='black', s=100, 
                 facecolors='none', edgecolors='black', label='Keyframes')
     
