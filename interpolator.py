@@ -1,11 +1,13 @@
 import math
 import ast
-from typing import Dict, Union, List, Callable, Tuple, Optional
+from typing import Dict, Union, List, Callable, Tuple, Optional, Sequence, Any
 
 try:
     import numpy as np
+    HAS_NUMPY = True
 except ImportError:
     np = None
+    HAS_NUMPY = False
 
 from .methods import (
     nearest_neighbor,
@@ -20,12 +22,21 @@ from .methods import (
 )
 
 class KeyframeInterpolator:
-    def __init__(self, num_indices: int):
-        """Initialize the keyframe interpolator with a total number of indices."""
-        if num_indices < 1:
+    def __init__(self, num_indices: Optional[int] = None, time_range: Optional[Tuple[float, float]] = None):
+        """Initialize the keyframe interpolator.
+        
+        Args:
+            num_indices: Optional total number of indices. If None, the interpolator
+                         will work in continuous time mode without a fixed range.
+            time_range: Optional tuple of (min_time, max_time) defining the time range.
+                        If None, the range will be determined from the keyframes.
+        """
+        if num_indices is not None and num_indices < 1:
             raise ValueError("Number of indices must be at least 1")
-        self.num_indices = float(num_indices)
-        self.keyframes: Dict[float, Tuple[Callable[[float, Dict[str, float]], float], Optional[float], Optional[Tuple[float, float]]]] = {}
+        
+        self.num_indices = float(num_indices) if num_indices is not None else None
+        self.time_range = time_range
+        self.keyframes: Dict[float, Tuple[Callable[[float, Dict[str, float]], float], Optional[float], Optional[Tuple[float, float, float, float]]]] = {}
         self.variables: Dict[str, Callable[[float, Dict[str, float]], float]] = {}
         self._precomputed = {}
 
@@ -34,7 +45,8 @@ class KeyframeInterpolator:
         safe_dict = {
             'sin': math.sin, 'cos': math.cos, 'tan': math.tan,
             'sqrt': math.sqrt, 'log': math.log, 'exp': math.exp,
-            'pi': math.pi, 'e': math.e, 'pow': math.pow, 'T': self.num_indices
+            'pi': math.pi, 'e': math.e, 'pow': math.pow, 
+            'T': self.num_indices if self.num_indices is not None else 0
         }
         tree = ast.parse(expr, mode='eval')
         compiled = compile(tree, "<string>", "eval")
@@ -85,19 +97,23 @@ class KeyframeInterpolator:
         """Set a keyframe with optional derivative and control points.
         
         Args:
-            index: The time index for the keyframe
+            index: The time index for the keyframe (can be arbitrary time in ms)
             value: The value at this keyframe (can be a number or an expression)
             derivative: Optional derivative at this point (for Hermite interpolation)
             control_points: Optional tuple of control points (x1, y1, x2, y2) for Bezier interpolation
         """
-        if not 0 <= index <= self.num_indices:
+        # In continuous time mode, we accept any time value
+        if self.num_indices is not None and not 0 <= index <= self.num_indices:
             raise ValueError(f"Index {index} must be between 0 and {self.num_indices}")
+            
         if not isinstance(value, (int, float, str)):
             raise TypeError(f"Keyframe value must be an int, float, or string, got {type(value).__name__}")
+            
         if isinstance(value, (int, float)):
             self.keyframes[index] = (lambda t, channels={}: float(value), derivative, control_points)
         else:
             self.keyframes[index] = (self._parse_expression(value), derivative, control_points)
+            
         self._precomputed.clear()
 
     def set_variable(self, name: str, value: Union[int, float, str]):
@@ -149,3 +165,69 @@ class KeyframeInterpolator:
             raise ValueError(f"Method must be one of {list(methods.keys())}")
         
         return methods[method](self, t, channels)
+    
+    def sample_range(self, start_time: float, end_time: float, num_samples: int, 
+                    method: str = "linear", channels: Dict[str, float] = {}) -> List[float]:
+        """Sample values at evenly spaced intervals within a time range.
+        
+        Args:
+            start_time: Start time to sample from
+            end_time: End time to sample to
+            num_samples: Number of samples to generate
+            method: Interpolation method to use
+            channels: Dictionary of channel values to use in expressions
+            
+        Returns:
+            List of sampled values
+        """
+        if num_samples < 2:
+            raise ValueError("Number of samples must be at least 2")
+            
+        result = []
+        step = (end_time - start_time) / (num_samples - 1) if num_samples > 1 else 0
+        
+        for i in range(num_samples):
+            t = start_time + i * step
+            result.append(self.get_value(t, method, channels))
+            
+        return result
+        
+    def sample_to_array(self, output_array: Union[List[float], Any], 
+                      start_time: float, end_time: float, 
+                      method: str = "linear", channels: Dict[str, float] = {}) -> None:
+        """Sample values directly into an existing array.
+        
+        Args:
+            output_array: Array to populate with sampled values
+            start_time: Start time to sample from
+            end_time: End time to sample to
+            method: Interpolation method to use
+            channels: Dictionary of channel values to use in expressions
+        """
+        if HAS_NUMPY and isinstance(output_array, np.ndarray):
+            num_samples = len(output_array)
+            step = (end_time - start_time) / (num_samples - 1) if num_samples > 1 else 0
+            
+            for i in range(num_samples):
+                t = start_time + i * step
+                output_array[i] = self.get_value(t, method, channels)
+        else:
+            # Handling standard Python lists
+            num_samples = len(output_array)
+            step = (end_time - start_time) / (num_samples - 1) if num_samples > 1 else 0
+            
+            for i in range(num_samples):
+                t = start_time + i * step
+                output_array[i] = self.get_value(t, method, channels)
+                
+    def get_time_range(self) -> Tuple[float, float]:
+        """Get the time range covered by keyframes.
+        
+        Returns:
+            Tuple of (min_time, max_time)
+        """
+        if not self.keyframes:
+            raise ValueError("No keyframes defined")
+            
+        times = sorted(self.keyframes.keys())
+        return (times[0], times[-1])
