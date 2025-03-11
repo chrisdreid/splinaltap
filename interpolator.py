@@ -61,7 +61,7 @@ class KeyframeInterpolator:
 
             allowed_nodes = {
                 ast.Expression, ast.Num, ast.UnaryOp, ast.BinOp, ast.Name, ast.Call, ast.Load,
-                ast.Add, ast.Sub, ast.Mult, ast.Div, ast.Constant,
+                ast.Add, ast.Sub, ast.Mult, ast.Div, ast.Constant, ast.BitXor, ast.Pow,
                 ast.IfExp, ast.Compare, ast.Eq, ast.Mod, ast.Lt, ast.Gt, ast.LtE, ast.GtE, ast.NotEq,
                 ast.BoolOp, ast.And
             }
