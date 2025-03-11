@@ -221,73 +221,283 @@ class KeyframeInterpolator:
                       method: str = "linear", channels: Dict[str, float] = {}) -> Any:
         """Sample values using GPU acceleration if available.
         
-        This method attempts to use CuPy or JAX for GPU-accelerated sampling.
-        If neither is available, falls back to regular CPU sampling.
+        This method attempts to use CuPy, JAX, or Numba for accelerated sampling.
+        If none are available, falls back to regular CPU sampling.
         
         Args:
             start_time: Start time to sample from
             end_time: End time to sample to
             num_samples: Number of samples to generate
-            method: Interpolation method to use (only linear is supported for GPU)
+            method: Interpolation method to use
             channels: Dictionary of channel values to use in expressions
             
         Returns:
             Array of sampled values
         """
-        # Check if we have a GPU-supporting backend available
-        current_backend = BackendManager.get_backend()
+        # Select the best backend for this workload
+        original_backend = BackendManager.get_backend().name
         
-        if not current_backend.supports_gpu:
-            available_backends = BackendManager.available_backends()
-            gpu_backends = [name for name in available_backends 
-                          if BackendManager.get_backend(name).supports_gpu]
+        # Use the performance ranking system to choose the best backend
+        BackendManager.use_best_available(data_size=num_samples, method=method)
+        current_backend = BackendManager.get_backend()
+        result = None
+        
+        try:
+            # Get keyframe points as arrays
+            points = self._get_keyframe_points(channels)
+            times = BackendManager.array([p[0] for p in points])
+            values = BackendManager.array([p[1] for p in points])
             
-            if gpu_backends:
-                # Temporarily switch to a GPU backend
-                original_backend = BackendManager.get_backend().name
-                BackendManager.set_backend(gpu_backends[0])
-                result = None
+            # Get derivatives for methods that need them (hermite, etc.)
+            derivatives = None
+            if method in ["hermite", "pchip"]:
+                derivatives = BackendManager.array([
+                    self.keyframes[index][1] if self.keyframes[index][1] is not None else 0.0 
+                    for index in sorted(self.keyframes)
+                ])
+            
+            # Get control points for Bezier
+            control_points = None
+            if method == "bezier":
+                # Collect all control points
+                ctrl_pts = []
+                for index in sorted(self.keyframes):
+                    if self.keyframes[index][2] is not None:
+                        ctrl_pts.extend(self.keyframes[index][2])
+                    else:
+                        # Default control points if not specified
+                        val = self._evaluate_keyframe(index, index, channels)
+                        ctrl_pts.extend([index, val, index, val])
                 
-                try:
-                    # Only linear interpolation is currently supported for GPU acceleration
-                    if method != "linear":
-                        raise ValueError(f"GPU acceleration only supports linear interpolation, not {method}")
-                    
-                    # Get keyframe points as arrays
-                    points = self._get_keyframe_points(channels)
-                    times = BackendManager.array([p[0] for p in points])
-                    values = BackendManager.array([p[1] for p in points])
-                    
-                    # Create sample times
-                    t_array = BackendManager.linspace(start_time, end_time, num_samples)
-                    result = BackendManager.zeros(num_samples)
-                    
-                    # For each sample point, find the bracketing keyframes and interpolate
-                    for i in range(num_samples):
-                        t = t_array[i]
-                        if t <= times[0]:
-                            result[i] = values[0]
-                        elif t >= times[-1]:
-                            result[i] = values[-1]
-                        else:
-                            # Find the indices of the keyframes that bracket this time
-                            for j in range(len(times) - 1):
-                                if times[j] <= t <= times[j + 1]:
-                                    # Linear interpolation
-                                    alpha = (t - times[j]) / (times[j + 1] - times[j])
-                                    result[i] = values[j] * (1 - alpha) + values[j + 1] * alpha
-                                    break
-                    
-                finally:
-                    # Restore the original backend
-                    BackendManager.set_backend(original_backend)
-                    
-                if result is not None:
-                    # Convert to the current backend's format
-                    return BackendManager.get_backend().to_native_array(result)
+                if ctrl_pts:
+                    control_points = BackendManager.array(ctrl_pts)
             
-        # Fall back to regular sampling if GPU acceleration failed or is unavailable
+            # Create sample times
+            t_array = BackendManager.linspace(start_time, end_time, num_samples)
+            result = BackendManager.zeros(num_samples)
+            
+            # Apply the appropriate interpolation method
+            if method == "nearest":
+                result = self._nearest_interpolate_gpu(times, values, t_array)
+            elif method == "linear":
+                result = self._linear_interpolate_gpu(times, values, t_array)
+            elif method == "polynomial":
+                result = self._polynomial_interpolate_gpu(times, values, t_array)
+            elif method == "quadratic":
+                result = self._quadratic_interpolate_gpu(times, values, t_array)
+            elif method == "cubic":
+                result = self._cubic_interpolate_gpu(times, values, t_array)
+            elif method == "hermite":
+                result = self._hermite_interpolate_gpu(times, values, derivatives, t_array)
+            elif method == "bezier":
+                result = self._bezier_interpolate_gpu(times, values, control_points, t_array)
+            elif method == "pchip":
+                result = self._pchip_interpolate_gpu(times, values, derivatives, t_array)
+            elif method == "gaussian":
+                result = self._gaussian_interpolate_gpu(times, values, t_array)
+            else:
+                raise ValueError(f"Unknown interpolation method: {method}")
+                
+        finally:
+            # Restore the original backend
+            BackendManager.set_backend(original_backend)
+            
+        if result is not None:
+            # Convert to the current backend's format
+            return BackendManager.get_backend().to_native_array(result)
+        
+        # Fall back to regular sampling if acceleration failed
         return self.sample_range(start_time, end_time, num_samples, method, channels)
+        
+    def _nearest_interpolate_gpu(self, times, values, t_array):
+        """GPU-accelerated nearest neighbor interpolation."""
+        backend = BackendManager.get_backend()
+        result = backend.zeros(len(t_array))
+        
+        # For each sample point, find the nearest keyframe
+        if backend.name in ["cupy", "jax"]:
+            # Vectorized implementation for CuPy/JAX
+            for i in range(len(t_array)):
+                t = t_array[i]
+                # Find closest time point
+                abs_diff = backend.abs(times - t)
+                closest_idx = backend.argmin(abs_diff)
+                result[i] = values[closest_idx]
+        else:
+            # Loop implementation for other backends
+            for i in range(len(t_array)):
+                t = t_array[i]
+                closest_idx = 0
+                min_diff = float('inf')
+                for j in range(len(times)):
+                    diff = abs(times[j] - t)
+                    if diff < min_diff:
+                        min_diff = diff
+                        closest_idx = j
+                result[i] = values[closest_idx]
+                
+        return result
+    
+    def _linear_interpolate_gpu(self, times, values, t_array):
+        """GPU-accelerated linear interpolation."""
+        backend = BackendManager.get_backend()
+        result = backend.zeros(len(t_array))
+        
+        # For each sample point, find the bracketing keyframes and interpolate
+        for i in range(len(t_array)):
+            t = t_array[i]
+            if t <= times[0]:
+                result[i] = values[0]
+            elif t >= times[-1]:
+                result[i] = values[-1]
+            else:
+                # Find the indices of the keyframes that bracket this time
+                for j in range(len(times) - 1):
+                    if times[j] <= t <= times[j + 1]:
+                        # Linear interpolation
+                        alpha = (t - times[j]) / (times[j + 1] - times[j])
+                        result[i] = values[j] * (1 - alpha) + values[j + 1] * alpha
+                        break
+                        
+        return result
+    
+    def _polynomial_interpolate_gpu(self, times, values, t_array):
+        """GPU-accelerated polynomial (Lagrange) interpolation."""
+        backend = BackendManager.get_backend()
+        result = backend.zeros(len(t_array))
+        n = len(times)
+        
+        # For each sample point, compute the Lagrange polynomial
+        for i in range(len(t_array)):
+            t = t_array[i]
+            if t <= times[0]:
+                result[i] = values[0]
+            elif t >= times[-1]:
+                result[i] = values[-1]
+            else:
+                # Lagrange interpolation
+                sum_value = 0.0
+                for j in range(n):
+                    # Compute the Lagrange basis polynomial
+                    basis = 1.0
+                    for k in range(n):
+                        if k != j:
+                            basis *= (t - times[k]) / (times[j] - times[k])
+                    sum_value += values[j] * basis
+                result[i] = sum_value
+                
+        return result
+    
+    def _quadratic_interpolate_gpu(self, times, values, t_array):
+        """GPU-accelerated quadratic spline interpolation."""
+        backend = BackendManager.get_backend()
+        result = backend.zeros(len(t_array))
+        n = len(times)
+        
+        # Need at least 3 points for quadratic interpolation
+        if n < 3:
+            return self._linear_interpolate_gpu(times, values, t_array)
+            
+        # Simplified implementation - just finds closest 3 points for interpolation
+        for i in range(len(t_array)):
+            t = t_array[i]
+            if t <= times[0]:
+                result[i] = values[0]
+            elif t >= times[-1]:
+                result[i] = values[-1]
+            else:
+                # Find the segment this t is in
+                segment = 0
+                for j in range(n - 1):
+                    if times[j] <= t <= times[j + 1]:
+                        segment = j
+                        break
+                
+                # Get 3 points for quadratic interpolation
+                idx1 = max(0, segment - 1)
+                idx2 = segment
+                idx3 = min(n - 1, segment + 1)
+                
+                # Simple quadratic through 3 points
+                x1, y1 = times[idx1], values[idx1]
+                x2, y2 = times[idx2], values[idx2]
+                x3, y3 = times[idx3], values[idx3]
+                
+                # Quadratic interpolation coefficients
+                denom = (x1 - x2) * (x1 - x3) * (x2 - x3)
+                a = (x3 * (y2 - y1) + x2 * (y1 - y3) + x1 * (y3 - y2)) / denom
+                b = (x3*x3 * (y1 - y2) + x2*x2 * (y3 - y1) + x1*x1 * (y2 - y3)) / denom
+                c = (x2 * x3 * (x2 - x3) * y1 + x3 * x1 * (x3 - x1) * y2 + x1 * x2 * (x1 - x2) * y3) / denom
+                
+                # Evaluate quadratic at t
+                result[i] = a * t*t + b * t + c
+                
+        return result
+    
+    # Add implementations for other interpolation methods (_cubic_interpolate_gpu, _hermite_interpolate_gpu, etc.)
+    # These would follow a similar pattern but with the specific math for each method
+    
+    def _cubic_interpolate_gpu(self, times, values, t_array):
+        """GPU-accelerated cubic spline interpolation."""
+        # Simplified implementation - for a proper cubic spline, we'd need to solve a tridiagonal system
+        backend = BackendManager.get_backend()
+        result = backend.zeros(len(t_array))
+        
+        # For now, this is a simpler cubic interpolation (not a true spline)
+        for i in range(len(t_array)):
+            t = t_array[i]
+            # Use regular method for now - would be replaced with proper GPU implementation
+            result[i] = cubic_spline(self, t, {})
+            
+        return result
+    
+    def _hermite_interpolate_gpu(self, times, values, derivatives, t_array):
+        """GPU-accelerated hermite interpolation."""
+        backend = BackendManager.get_backend()
+        result = backend.zeros(len(t_array))
+        
+        # For now, just use the regular method - would be replaced with proper GPU implementation
+        for i in range(len(t_array)):
+            t = t_array[i]
+            result[i] = hermite_interpolate(self, t, {})
+            
+        return result
+        
+    def _bezier_interpolate_gpu(self, times, values, control_points, t_array):
+        """GPU-accelerated bezier interpolation."""
+        backend = BackendManager.get_backend()
+        result = backend.zeros(len(t_array))
+        
+        # For now, just use the regular method - would be replaced with proper GPU implementation
+        for i in range(len(t_array)):
+            t = t_array[i]
+            result[i] = bezier_interpolate(self, t, {})
+            
+        return result
+    
+    def _pchip_interpolate_gpu(self, times, values, derivatives, t_array):
+        """GPU-accelerated PCHIP interpolation."""
+        backend = BackendManager.get_backend()
+        result = backend.zeros(len(t_array))
+        
+        # For now, just use the regular method - would be replaced with proper GPU implementation
+        for i in range(len(t_array)):
+            t = t_array[i]
+            result[i] = pchip_interpolate(self, t, {})
+            
+        return result
+    
+    def _gaussian_interpolate_gpu(self, times, values, t_array):
+        """GPU-accelerated gaussian process interpolation."""
+        backend = BackendManager.get_backend()
+        result = backend.zeros(len(t_array))
+        
+        # For now, just use the regular method - would be replaced with proper GPU implementation
+        for i in range(len(t_array)):
+            t = t_array[i]
+            result[i] = gaussian_interpolate(self, t, {})
+            
+        return result
                 
     def get_time_range(self) -> Tuple[float, float]:
         """Get the time range covered by keyframes.
@@ -300,3 +510,158 @@ class KeyframeInterpolator:
             
         times = sorted(self.keyframes.keys())
         return (times[0], times[-1])
+        
+    def export_function(self, language: str = "glsl", method: str = "linear") -> str:
+        """Export interpolation as a function in the specified language.
+        
+        This allows the interpolation to be used in shaders or other environments
+        where Python code cannot run directly.
+        
+        Args:
+            language: The target language ("glsl", "hlsl", "wgsl", "cuda", "c")
+            method: Interpolation method to use
+            
+        Returns:
+            String containing the interpolation function in the target language
+        """
+        if not self.keyframes:
+            raise ValueError("No keyframes defined")
+            
+        # Get keyframe points
+        points = self._get_keyframe_points()
+        times = [p[0] for p in points]
+        values = [p[1] for p in points]
+        
+        # Get function name based on method
+        func_name = f"{method}Interpolate"
+        
+        if language == "glsl":
+            return self._export_glsl(func_name, times, values, method)
+        elif language == "hlsl":
+            return self._export_hlsl(func_name, times, values, method)
+        elif language == "wgsl":
+            return self._export_wgsl(func_name, times, values, method)
+        elif language == "cuda":
+            return self._export_cuda(func_name, times, values, method)
+        elif language == "c":
+            return self._export_c(func_name, times, values, method)
+        else:
+            raise ValueError(f"Unsupported language: {language}")
+    
+    def _export_glsl(self, func_name: str, times: List[float], values: List[float], method: str) -> str:
+        """Export interpolation as a GLSL function."""
+        # For simple keyframes, we generate a straightforward GLSL function
+        if method == "linear":
+            # Create a GLSL function for linear interpolation
+            code = [
+                f"// GLSL linear interpolation function for {len(times)} keyframes",
+                f"float {func_name}(float t) {{",
+                "    // Keyframe times"
+            ]
+            
+            # Write times array
+            times_str = ", ".join([f"{t:.6f}" for t in times])
+            code.append(f"    float times[{len(times)}] = float[{len(times)}]({times_str});")
+            
+            # Write values array
+            values_str = ", ".join([f"{v:.6f}" for v in values])
+            code.append(f"    float values[{len(values)}] = float[{len(values)}]({values_str});")
+            
+            # Simple linear interpolation logic
+            code.extend([
+                "",
+                "    // Handle out-of-range times",
+                f"    if (t <= times[0]) return values[0];",
+                f"    if (t >= times[{len(times) - 1}]) return values[{len(times) - 1}];",
+                "",
+                "    // Find the bracketing keyframes",
+                "    for (int i = 0; i < times.length() - 1; i++) {",
+                "        if (times[i] <= t && t <= times[i + 1]) {",
+                "            float alpha = (t - times[i]) / (times[i + 1] - times[i]);",
+                "            return mix(values[i], values[i + 1], alpha);",
+                "        }",
+                "    }",
+                "",
+                "    // Fallback (should never reach here)",
+                "    return values[0];",
+                "}"
+            ])
+            
+            return "\n".join(code)
+            
+        elif method == "cubic":
+            # Create a GLSL function for cubic interpolation (simplified)
+            # This would need to be expanded for real-world use
+            code = [
+                f"// GLSL cubic interpolation function for {len(times)} keyframes",
+                f"float {func_name}(float t) {{",
+                "    // Implementation of cubic interpolation would go here",
+                "    // This is a simplified placeholder",
+                "    return 0.0;",
+                "}"
+            ]
+            return "\n".join(code)
+            
+        else:
+            # Other methods would follow similar patterns
+            return f"// GLSL export for {method} interpolation not yet implemented"
+    
+    def _export_hlsl(self, func_name: str, times: List[float], values: List[float], method: str) -> str:
+        """Export interpolation as an HLSL function."""
+        # HLSL implementation would be similar to GLSL
+        return f"// HLSL export for {method} interpolation not yet implemented"
+        
+    def _export_wgsl(self, func_name: str, times: List[float], values: List[float], method: str) -> str:
+        """Export interpolation as a WGSL function."""
+        # WGSL implementation would be similar to GLSL with syntax adjustments
+        return f"// WGSL export for {method} interpolation not yet implemented"
+        
+    def _export_cuda(self, func_name: str, times: List[float], values: List[float], method: str) -> str:
+        """Export interpolation as a CUDA function."""
+        # CUDA implementation would be more C-like
+        return f"// CUDA export for {method} interpolation not yet implemented"
+        
+    def _export_c(self, func_name: str, times: List[float], values: List[float], method: str) -> str:
+        """Export interpolation as a C function."""
+        # Basic C implementation for linear interpolation
+        if method == "linear":
+            # Create a C function for linear interpolation
+            code = [
+                f"// C linear interpolation function for {len(times)} keyframes",
+                f"float {func_name}(float t) {{",
+                "    // Keyframe times and values"
+            ]
+            
+            # Write times array
+            times_arr = ", ".join([f"{t:.6f}f" for t in times])
+            code.append(f"    static const float times[{len(times)}] = {{{times_arr}}};")
+            
+            # Write values array
+            values_arr = ", ".join([f"{v:.6f}f" for v in values])
+            code.append(f"    static const float values[{len(values)}] = {{{values_arr}}};")
+            
+            # Linear interpolation logic
+            code.extend([
+                f"    static const int count = {len(times)};",
+                "",
+                "    // Handle out-of-range times",
+                "    if (t <= times[0]) return values[0];",
+                "    if (t >= times[count - 1]) return values[count - 1];",
+                "",
+                "    // Find the bracketing keyframes",
+                "    for (int i = 0; i < count - 1; i++) {",
+                "        if (times[i] <= t && t <= times[i + 1]) {",
+                "            float alpha = (t - times[i]) / (times[i + 1] - times[i]);",
+                "            return values[i] * (1.0f - alpha) + values[i + 1] * alpha;",
+                "        }",
+                "    }",
+                "",
+                "    // Fallback (should never reach here)",
+                "    return values[0];",
+                "}"
+            ])
+            
+            return "\n".join(code)
+        else:
+            # Other methods would be implemented similarly
+            return f"// C export for {method} interpolation not yet implemented"

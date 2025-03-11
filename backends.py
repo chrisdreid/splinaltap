@@ -6,6 +6,7 @@ This module provides a uniform interface to different math backends:
 - NumPy (for CPU acceleration)
 - CuPy (for GPU acceleration)
 - JAX (for GPU acceleration and auto-differentiation)
+- Numba (for JIT compilation on CPU and GPU)
 
 Each backend has different trade-offs in terms of performance, features, and 
 hardware requirements. The BackendManager allows the user to select the best
@@ -14,12 +15,15 @@ backend for their needs.
 
 import math
 import warnings
+import time
 from typing import Dict, List, Optional, Union, Any, Type, Callable, Tuple
 
 # Backend availability flags
 HAS_NUMPY = False
 HAS_CUPY = False
 HAS_JAX = False
+HAS_NUMBA = False
+HAS_NUMBA_CUDA = False
 
 # Try to import NumPy
 try:
@@ -40,6 +44,23 @@ try:
     import jax
     import jax.numpy as jnp
     HAS_JAX = True
+except ImportError:
+    pass
+
+# Try to import Numba
+try:
+    import numba
+    from numba import jit, prange
+    HAS_NUMBA = True
+    
+    # Check for CUDA support in Numba
+    try:
+        from numba import cuda
+        test_cuda = cuda.is_available()
+        if test_cuda:
+            HAS_NUMBA_CUDA = True
+    except (ImportError, Exception):
+        pass
 except ImportError:
     pass
 
@@ -95,6 +116,68 @@ class Backend:
     def to_numpy(cls, arr: Any) -> Any:
         """Convert a backend array to NumPy."""
         raise NotImplementedError
+        
+    @classmethod
+    def performance_rank(cls, data_size: int = 1000, method: str = "linear") -> int:
+        """Get the relative performance rank of this backend for a specific workload.
+        
+        Args:
+            data_size: Estimated number of data points
+            method: Interpolation method (determines complexity)
+            
+        Returns:
+            Performance rank (higher is better)
+        """
+        if not cls.is_available:
+            return 0
+            
+        # Base ranks:
+        # Python: 1
+        # NumPy: 10
+        # Numba CPU: 50
+        # CuPy/JAX small data: 20
+        # CuPy/JAX large data: 100
+        
+        base_rank = 1  # Python
+        
+        # Adjust for backend type
+        if cls.name == "python":
+            base_rank = 1
+        elif cls.name == "numpy":
+            base_rank = 10
+        elif cls.name == "numba":
+            base_rank = 50
+        elif cls.name in ["cupy", "jax"]:
+            # GPU backends have overhead - adjust ranking based on data size
+            if data_size < 10000:
+                base_rank = 20
+            else:
+                base_rank = 100
+                
+        # Adjust for interpolation method complexity
+        method_complexity = {
+            "nearest": 1.0,
+            "linear": 1.0,
+            "polynomial": 2.0,
+            "quadratic": 1.5,
+            "cubic": 1.5,
+            "hermite": 1.8,
+            "bezier": 1.8,
+            "pchip": 1.8,
+            "gaussian": 3.0
+        }
+        
+        complexity_factor = method_complexity.get(method, 1.0)
+        
+        # More complex methods benefit more from GPU acceleration
+        if cls.supports_gpu and complexity_factor > 1.0:
+            base_rank *= 1.5
+            
+        # Penalize GPU for very small datasets (overhead dominates)
+        if cls.supports_gpu and data_size < 1000:
+            base_rank *= 0.5
+            
+        return int(base_rank)
 
 
 class PythonBackend(Backend):
@@ -418,6 +501,97 @@ class JaxBackend(Backend):
         return np.array(arr)
 
 
+class NumbaBackend(Backend):
+    """Numba JIT-compiled math backend for CPU and GPU acceleration."""
+    
+    name = "numba"
+    is_available = HAS_NUMBA
+    supports_gpu = HAS_NUMBA_CUDA
+    supports_autodiff = False
+    
+    # Numba requires NumPy
+    if not HAS_NUMPY:
+        is_available = False
+    
+    # Math functions - use NumPy's versions since Numba works with them
+    sin = np.sin if HAS_NUMPY else None
+    cos = np.cos if HAS_NUMPY else None
+    tan = np.tan if HAS_NUMPY else None
+    exp = np.exp if HAS_NUMPY else None
+    log = np.log if HAS_NUMPY else None
+    sqrt = np.sqrt if HAS_NUMPY else None
+    pow = np.power if HAS_NUMPY else None
+    
+    # Constants
+    pi = np.pi if HAS_NUMPY else None
+    e = np.e if HAS_NUMPY else None
+    
+    # Array operations - use NumPy as base
+    array = np.array if HAS_NUMPY else None
+    zeros = np.zeros if HAS_NUMPY else None
+    ones = np.ones if HAS_NUMPY else None
+    linspace = np.linspace if HAS_NUMPY else None
+    arange = np.arange if HAS_NUMPY else None
+    
+    # Linear algebra
+    dot = np.dot if HAS_NUMPY else None
+    solve = np.linalg.solve if HAS_NUMPY else None
+    
+    # JIT-compiled functions
+    _jit_functions = {}
+    
+    @classmethod
+    def setup(cls) -> None:
+        """Set up the Numba backend."""
+        if not HAS_NUMBA:
+            raise BackendError("Numba is not available")
+        if not HAS_NUMPY:
+            raise BackendError("NumPy is required for Numba backend")
+        
+        # Initialize JIT functions if needed
+        pass
+    
+    @classmethod
+    def jit(cls, func):
+        """JIT-compile a function using Numba."""
+        if not HAS_NUMBA:
+            return func
+        
+        # Cache the function if we've already compiled it
+        if func in cls._jit_functions:
+            return cls._jit_functions[func]
+        
+        # Compile with Numba and cache it
+        if HAS_NUMBA_CUDA and func.__name__.endswith('_gpu'):
+            # CUDA implementation
+            jitted = cuda.jit(func)
+        else:
+            # CPU implementation
+            jitted = jit(nopython=True, parallel=True)(func)
+        
+        cls._jit_functions[func] = jitted
+        return jitted
+    
+    @classmethod
+    def to_native_array(cls, arr: Any) -> Any:
+        """Convert an array to a NumPy array for Numba."""
+        if not HAS_NUMBA:
+            raise BackendError("Numba is not available")
+        
+        if isinstance(arr, np.ndarray):
+            return arr
+            
+        return np.array(arr)
+    
+    @classmethod
+    def to_numpy(cls, arr: Any) -> Any:
+        """Convert an array to NumPy (identity for Numba)."""
+        if not HAS_NUMBA:
+            raise BackendError("Numba is not available")
+            
+        return arr  # Already NumPy arrays
+
+
 class BackendManager:
     """Manager for selecting and using math backends."""
     
@@ -425,7 +599,8 @@ class BackendManager:
         "python": PythonBackend,
         "numpy": NumpyBackend,
         "cupy": CupyBackend,
-        "jax": JaxBackend
+        "jax": JaxBackend,
+        "numba": NumbaBackend
     }
     
     _current_backend = PythonBackend
@@ -461,22 +636,110 @@ class BackendManager:
             raise BackendError(f"Failed to set backend {name}: {e}")
     
     @classmethod
-    def get_best_available_backend(cls) -> Type[Backend]:
-        """Get the best available backend based on system capabilities."""
-        if HAS_CUPY:
-            return CupyBackend
-        elif HAS_JAX:
-            return JaxBackend
-        elif HAS_NUMPY:
-            return NumpyBackend
-        else:
+    def get_best_available_backend(cls, data_size: int = 1000, method: str = "linear") -> Type[Backend]:
+        """Get the best available backend based on system capabilities and workload.
+        
+        Args:
+            data_size: Estimated number of data points to process
+            method: Interpolation method to use (affects complexity)
+            
+        Returns:
+            The best backend class for the given workload
+        """
+        available = cls.available_backends()
+        if not available:
             return PythonBackend
+            
+        # Rank available backends for this specific workload
+        ranked_backends = []
+        for name in available:
+            backend = cls._backends[name]
+            rank = backend.performance_rank(data_size, method)
+            ranked_backends.append((rank, backend))
+            
+        # Sort by rank (descending)
+        ranked_backends.sort(reverse=True)
+        
+        # Return the highest-ranked backend
+        return ranked_backends[0][1]
     
     @classmethod
-    def use_best_available(cls) -> None:
-        """Switch to the best available backend."""
-        backend = cls.get_best_available_backend()
+    def use_best_available(cls, data_size: int = 1000, method: str = "linear") -> None:
+        """Switch to the best available backend for the given workload.
+        
+        Args:
+            data_size: Estimated number of data points to process
+            method: Interpolation method to use (affects complexity)
+        """
+        backend = cls.get_best_available_backend(data_size, method)
         cls.set_backend(backend.name)
+        
+    @classmethod
+    def benchmark_backends(cls, data_size: int = 10000, method: str = "linear", repetitions: int = 3) -> Dict[str, float]:
+        """Benchmark all available backends for a specific workload.
+        
+        Args:
+            data_size: Number of data points to test with
+            method: Interpolation method to test
+            repetitions: Number of test repetitions for accuracy
+            
+        Returns:
+            Dictionary mapping backend names to execution times (seconds)
+        """
+        # Create test data - simple linear interpolation between 0 and 1
+        x_values = [0.0, 1.0]
+        y_values = [0.0, 1.0]
+        sample_points = [i / (data_size - 1) for i in range(data_size)]
+        
+        results = {}
+        original_backend = cls.get_backend().name
+        
+        for backend_name in cls.available_backends():
+            try:
+                # Switch to this backend
+                cls.set_backend(backend_name)
+                backend = cls.get_backend()
+                
+                # Run warmup iteration
+                cls._benchmark_iteration(backend, x_values, y_values, sample_points, method)
+                
+                # Run timed iterations
+                times = []
+                for _ in range(repetitions):
+                    elapsed = cls._benchmark_iteration(backend, x_values, y_values, sample_points, method)
+                    times.append(elapsed)
+                
+                # Record average time
+                results[backend_name] = sum(times) / len(times)
+                
+            except Exception as e:
+                results[backend_name] = float('inf')  # Mark as failed
+                warnings.warn(f"Benchmark failed for {backend_name}: {e}")
+                
+        # Restore original backend
+        cls.set_backend(original_backend)
+        return results
+    
+    @classmethod
+    def _benchmark_iteration(cls, backend: Type[Backend], x_values, y_values, sample_points, method: str) -> float:
+        """Run a single benchmark iteration for a backend."""
+        # Prepare arrays in this backend's format
+        x_arr = backend.array(x_values)
+        y_arr = backend.array(y_values)
+        sample_arr = backend.array(sample_points)
+        result_arr = backend.zeros(len(sample_points))
+        
+        # Time basic linear interpolation
+        start_time = time.time()
+        
+        # Simplified linear interpolation for benchmarking
+        for i in range(len(sample_points)):
+            t = sample_points[i]
+            # Simple linear interpolation: y = y0 + (y1-y0)*(t-x0)/(x1-x0)
+            result_arr[i] = y_arr[0] + (y_arr[1] - y_arr[0]) * (t - x_arr[0]) / (x_arr[1] - x_arr[0])
+            
+        end_time = time.time()
+        return end_time - start_time
     
     # Forward commonly used functions to the current backend
     @classmethod

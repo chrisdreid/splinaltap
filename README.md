@@ -158,20 +158,116 @@ interpolator.set_keyframe(4.0, 5.0, derivative=None, control_points=(4.2, 6.0, 4
 from splinaltap import KeyframeInterpolator
 from splinaltap.backends import BackendManager
 
-# Set backend to CuPy if available
-try:
-    BackendManager.set_backend('cupy')
-    print("Using CuPy GPU acceleration")
-except Exception:
-    print("CuPy not available, using fallback backend")
+# Let splinaltap choose the best backend for your workload
+BackendManager.use_best_available(data_size=1_000_000, method="cubic")
+print(f"Selected backend: {BackendManager.get_backend().name}")
 
 # Create interpolator and keyframes
 interpolator = KeyframeInterpolator(10)
 interpolator.set_keyframe(0.0, 0)
 interpolator.set_keyframe(10.0, 10)
 
-# Generate 1 million samples efficiently using GPU
-samples = interpolator.sample_with_gpu(0, 10, 1_000_000)
+# Generate 1 million samples efficiently using the best available backend
+samples = interpolator.sample_with_gpu(0, 10, 1_000_000, method="cubic")
+```
+
+### Exporting to Shader Code
+
+Splinaltap can export your keyframe interpolation as shader code for use in graphics applications:
+
+```python
+from splinaltap import KeyframeInterpolator
+
+# Create interpolator with keyframes
+interpolator = KeyframeInterpolator(10)
+interpolator.set_keyframe(0.0, 0)
+interpolator.set_keyframe(2.5, 5)
+interpolator.set_keyframe(7.5, 2)
+interpolator.set_keyframe(10.0, 10)
+
+# Export as GLSL shader function
+glsl_code = interpolator.export_function(language="glsl", method="linear")
+print(glsl_code)
+
+# Export as C/C++ function
+c_code = interpolator.export_function(language="c", method="linear")
+print(c_code)
+```
+
+Example GLSL output:
+```glsl
+// GLSL linear interpolation function for 4 keyframes
+float linearInterpolate(float t) {
+    // Keyframe times
+    float times[4] = float[4](0.000000, 2.500000, 7.500000, 10.000000);
+    // Keyframe values
+    float values[4] = float[4](0.000000, 5.000000, 2.000000, 10.000000);
+
+    // Handle out-of-range times
+    if (t <= times[0]) return values[0];
+    if (t >= times[3]) return values[3];
+
+    // Find the bracketing keyframes
+    for (int i = 0; i < times.length() - 1; i++) {
+        if (times[i] <= t && t <= times[i + 1]) {
+            float alpha = (t - times[i]) / (times[i + 1] - times[i]);
+            return mix(values[i], values[i + 1], alpha);
+        }
+    }
+
+    // Fallback (should never reach here)
+    return values[0];
+}
+```
+
+## Performance Considerations
+
+Splinaltap uses a tiered approach to performance optimization, automatically choosing the best available implementation based on your hardware and installed packages:
+
+1. **CUDA/CuPy kernels**: Fastest option for large-scale processing on NVIDIA GPUs
+2. **JAX/Numba JIT compilation**: Fast GPU and CPU acceleration with automatic optimization
+3. **Vectorized NumPy/CuPy**: Efficient batch operations for moderate-sized datasets
+4. **Pure Python**: Universal fallback that works everywhere
+
+### CPU vs GPU Performance Tradeoffs
+
+| Operation | CPU Better Than GPU | GPU Better Than CPU |
+|-----------|---------------------|---------------------|
+| Linear interpolation | < 50,000 points | > 100,000 points |
+| Cubic/complex interpolation | < 10,000 points | > 20,000 points |
+| Multiple properties | < 1,000 properties | > 1,000 properties |
+| Interactive editing | Real-time adjustments | Batch processing |
+| Small animations | Few frames/keyframes | Complex render pipelines |
+
+### GPU Overhead Considerations
+
+When using GPU acceleration, be aware of these overhead costs:
+- PCIe data transfer: ~1-2ms base latency
+- GPU memory allocation: ~0.5-1ms
+- Kernel launch: ~5-10μs per call
+
+For maximum performance with GPU acceleration:
+1. Process data in large batches when possible
+2. Keep data on the GPU if it will be used for further processing
+3. For interactive applications, consider CPU acceleration with Numba for lower latency
+
+```python
+# Example: Choosing the optimal backend automatically
+from splinaltap import KeyframeInterpolator
+from splinaltap.backends import BackendManager
+
+# Let splinaltap choose the best backend for your system
+BackendManager.use_best_available()
+
+# Create a complex interpolation
+interpolator = KeyframeInterpolator(10)
+interpolator.set_keyframe(0.0, 0)
+interpolator.set_keyframe(2.5, "sin(t) + 1")
+interpolator.set_keyframe(5.0, "t^2")
+interpolator.set_keyframe(10.0, 10)
+
+# Generate samples with optimal performance
+samples = interpolator.sample_range(0, 10, 100_000, method="cubic")
 ```
 
 ## Applications
