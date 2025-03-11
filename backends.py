@@ -433,8 +433,21 @@ class CupyBackend(Backend):
             
         if not HAS_NUMPY:
             raise BackendError("NumPy is not available for conversion from CuPy")
+        
+        # Check if it's a CuPy array 
+        if isinstance(arr, cp.ndarray):
+            return cp.asnumpy(arr)
+        
+        # If it's already a list or other basic type, just return it 
+        if isinstance(arr, (list, tuple, int, float)):
+            return arr
             
-        return cp.asnumpy(arr)
+        # For anything else, try generic conversion
+        try:
+            return cp.asnumpy(arr)
+        except:
+            # If conversion fails, return the original array
+            return arr
 
 
 class JaxBackend(Backend):
@@ -497,8 +510,21 @@ class JaxBackend(Backend):
             
         if not HAS_NUMPY:
             raise BackendError("NumPy is not available for conversion from JAX")
+        
+        # Check if it's a JAX array 
+        if isinstance(arr, jnp.ndarray):
+            return np.array(arr)
+        
+        # If it's already a list or other basic type, just return it 
+        if isinstance(arr, (list, tuple, int, float)):
+            return arr
             
-        return np.array(arr)
+        # For anything else, try generic conversion
+        try:
+            return np.array(arr)
+        except:
+            # If conversion fails, return the original array
+            return arr
 
 
 class NumbaBackend(Backend):
@@ -765,11 +791,17 @@ class BackendManager:
     @classmethod
     def to_numpy(cls, arr: Any) -> Any:
         """Convert an array to NumPy."""
+        # Fast path for common types, avoid unnecessary conversions
+        if isinstance(arr, (list, tuple, int, float)) or (HAS_NUMPY and isinstance(arr, np.ndarray)):
+            return arr
+            
         try:
-            return cls._current_backend.to_numpy(arr)
-        except BackendError:
-            # If NumPy isn't available, just return the array as is
-            warnings.warn("NumPy not available for conversion, returning original array")
+            # Let the backend handle the conversion
+            result = cls._current_backend.to_numpy(arr)
+            return result
+        except Exception as e:
+            # If any conversion error occurs, just return the original array
+            warnings.warn(f"Array conversion failed: {e}, returning original array")
             return arr
 
 

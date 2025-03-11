@@ -62,6 +62,13 @@ def sanitize_for_ast(value: str) -> str:
     Returns:
         The sanitized string
     """
+    # Handle ^ power operator to use pow() function
+    if '^' in value:
+        import re
+        # Replace any occurrence of ^ with ** for Python's power operator
+        # This is a more general solution that can handle complex expressions
+        value = value.replace('^', '**')
+    
     # Replace @ with # which is safer for AST parsing
     return value.replace('@', '#')
 
@@ -558,7 +565,9 @@ def sample_cmd(args: argparse.Namespace) -> None:
                 for channel, method_values in results.items():
                     output["results"][channel] = {}
                     for method, values in method_values.items():
-                        output["results"][channel][method] = BackendManager.to_numpy(values).tolist()
+                        # Convert to list for safe JSON serialization
+                        values_as_list = values if isinstance(values, list) else list(values)
+                        output["results"][channel][method] = values_as_list
                 
                 json.dump(output, f, indent=2)
         elif args.output_file.endswith('.csv'):
@@ -575,8 +584,9 @@ def sample_cmd(args: argparse.Namespace) -> None:
                     row = [str(point)]
                     for channel, method_values in results.items():
                         for method, values in method_values.items():
-                            values_np = BackendManager.to_numpy(values)
-                            row.append(str(values_np[i]))
+                            # Convert to list to ensure safe access, avoid direct indexing of complex array types
+                            values_as_list = values if isinstance(values, list) else list(values)
+                            row.append(str(values_as_list[i]))
                     f.write(",".join(row) + "\n")
         elif args.output_file.endswith('.npy') and HAS_NUMPY:
             # For NumPy, save as structured array
@@ -587,8 +597,9 @@ def sample_cmd(args: argparse.Namespace) -> None:
                 
                 for channel, method_values in results.items():
                     for method, values in method_values.items():
-                        values_np = BackendManager.to_numpy(values)
-                        columns.append(values_np)
+                        # Convert to list for consistent handling
+                        values_as_list = values if isinstance(values, list) else list(values)
+                        columns.append(values_as_list)
                         column_names.append(f"{channel}_{method}")
                 
                 # Stack columns and save
@@ -601,8 +612,9 @@ def sample_cmd(args: argparse.Namespace) -> None:
                         row = [str(point)]
                         for channel, method_values in results.items():
                             for method, values in method_values.items():
-                                values_np = BackendManager.to_numpy(values)
-                                row.append(str(values_np[i]))
+                                # Convert to list to ensure safe access
+                                values_as_list = values if isinstance(values, list) else list(values)
+                                row.append(str(values_as_list[i]))
                         f.write(",".join(row) + "\n")
         else:
             # Default text output
@@ -612,8 +624,9 @@ def sample_cmd(args: argparse.Namespace) -> None:
                     f.write(f"{point}")
                     for channel, method_values in results.items():
                         for method, values in method_values.items():
-                            values_np = BackendManager.to_numpy(values)
-                            f.write(f",{channel}:{method}={values_np[i]}")
+                            # Convert to list to ensure safe access
+                            values_as_list = values if isinstance(values, list) else list(values)
+                            f.write(f",{channel}:{method}={values_as_list[i]}")
                     f.write("\n")
     else:
         # Print to console
@@ -621,8 +634,9 @@ def sample_cmd(args: argparse.Namespace) -> None:
             line = f"{point}"
             for channel, method_values in results.items():
                 for method, values in method_values.items():
-                    values_np = BackendManager.to_numpy(values)
-                    line += f",{channel}:{method}={values_np[i]}"
+                    # Convert to list to ensure safe access
+                    values_as_list = values if isinstance(values, list) else list(values)
+                    line += f",{channel}:{method}={values_as_list[i]}"
             print(line)
 
 

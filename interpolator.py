@@ -15,6 +15,165 @@ from .methods import (
     cubic_spline
 )
 
+class ExpressionEvaluator:
+    """A class that transforms AST expressions to safe callable functions."""
+    
+    def __init__(self, safe_funcs, safe_constants, variables):
+        self.safe_funcs = safe_funcs
+        self.safe_constants = safe_constants
+        self.variables = variables
+    
+    def create_evaluator(self, tree):
+        """Create a callable evaluator function from an AST."""
+        # Transform the AST to a function
+        transformer = self.ExpressionTransformer(self.safe_funcs, self.safe_constants, self.variables)
+        expr_func = transformer.visit(tree.body)
+        
+        def evaluator(t, channels=None):
+            if channels is None:
+                channels = {}
+            # Create a context with t and channels
+            context = {'t': t}
+            context.update(channels)
+            return expr_func(context)
+        
+        return evaluator
+    
+    class ExpressionTransformer(ast.NodeTransformer):
+        """Transforms AST nodes into callable functions."""
+        
+        def __init__(self, safe_funcs, safe_constants, variables):
+            self.safe_funcs = safe_funcs
+            self.safe_constants = safe_constants
+            self.variables = variables
+        
+        def visit_Expression(self, node):
+            # Return the transformed body
+            return self.visit(node.body)
+        
+        def visit_Num(self, node):
+            # For constant numbers, just return the value
+            return lambda ctx: node.n
+        
+        def visit_Constant(self, node):
+            # For constant values, just return the value
+            return lambda ctx: node.value
+        
+        def visit_Name(self, node):
+            # Handle variable names
+            name = node.id
+            
+            if name in self.safe_constants:
+                # For constants like pi, e
+                constant_value = self.safe_constants[name]
+                return lambda ctx: constant_value
+            elif name in self.variables:
+                # For variables defined in the interpolator
+                var_func = self.variables[name]
+                return lambda ctx: var_func(ctx.get('t', 0), ctx)
+            else:
+                # For t and channel variables
+                return lambda ctx: ctx.get(name, 0)
+        
+        def visit_BinOp(self, node):
+            # Handle binary operations
+            left = self.visit(node.left)
+            right = self.visit(node.right)
+            
+            if isinstance(node.op, ast.Add):
+                return lambda ctx: left(ctx) + right(ctx)
+            elif isinstance(node.op, ast.Sub):
+                return lambda ctx: left(ctx) - right(ctx)
+            elif isinstance(node.op, ast.Mult):
+                return lambda ctx: left(ctx) * right(ctx)
+            elif isinstance(node.op, ast.Div):
+                return lambda ctx: left(ctx) / right(ctx)
+            elif isinstance(node.op, ast.Pow):
+                return lambda ctx: left(ctx) ** right(ctx)
+            elif isinstance(node.op, ast.Mod):
+                return lambda ctx: left(ctx) % right(ctx)
+            else:
+                raise ValueError(f"Unsupported binary operator: {type(node.op).__name__}")
+        
+        def visit_UnaryOp(self, node):
+            # Handle unary operations
+            operand = self.visit(node.operand)
+            
+            if isinstance(node.op, ast.USub):
+                return lambda ctx: -operand(ctx)
+            elif isinstance(node.op, ast.UAdd):
+                return lambda ctx: +operand(ctx)
+            else:
+                raise ValueError(f"Unsupported unary operator: {type(node.op).__name__}")
+        
+        def visit_Call(self, node):
+            # Handle function calls
+            if not isinstance(node.func, ast.Name) or node.func.id not in self.safe_funcs:
+                raise ValueError(f"Unsafe function call: {node.func}")
+            
+            func = self.safe_funcs[node.func.id]
+            args = [self.visit(arg) for arg in node.args]
+            
+            return lambda ctx: func(*(arg(ctx) for arg in args))
+        
+        def visit_IfExp(self, node):
+            # Handle conditional expressions (x if condition else y)
+            test = self.visit(node.test)
+            body = self.visit(node.body)
+            orelse = self.visit(node.orelse)
+            
+            return lambda ctx: body(ctx) if test(ctx) else orelse(ctx)
+        
+        def visit_Compare(self, node):
+            # Handle comparisons (a < b, a == b, etc.)
+            if len(node.ops) != 1 or len(node.comparators) != 1:
+                raise ValueError("Only simple comparisons are supported")
+            
+            left = self.visit(node.left)
+            op = node.ops[0]
+            right = self.visit(node.comparators[0])
+            
+            if isinstance(op, ast.Eq):
+                return lambda ctx: left(ctx) == right(ctx)
+            elif isinstance(op, ast.NotEq):
+                return lambda ctx: left(ctx) != right(ctx)
+            elif isinstance(op, ast.Lt):
+                return lambda ctx: left(ctx) < right(ctx)
+            elif isinstance(op, ast.LtE):
+                return lambda ctx: left(ctx) <= right(ctx)
+            elif isinstance(op, ast.Gt):
+                return lambda ctx: left(ctx) > right(ctx)
+            elif isinstance(op, ast.GtE):
+                return lambda ctx: left(ctx) >= right(ctx)
+            else:
+                raise ValueError(f"Unsupported comparison operator: {type(op).__name__}")
+        
+        def visit_BoolOp(self, node):
+            # Handle boolean operations (and, or)
+            values = [self.visit(value) for value in node.values]
+            
+            if isinstance(node.op, ast.And):
+                def eval_and(ctx):
+                    for value in values:
+                        result = value(ctx)
+                        if not result:
+                            return result
+                    return result
+                return eval_and
+            
+            elif isinstance(node.op, ast.Or):
+                def eval_or(ctx):
+                    for value in values:
+                        result = value(ctx)
+                        if result:
+                            return result
+                    return result
+                return eval_or
+            
+            else:
+                raise ValueError(f"Unsupported boolean operator: {type(node.op).__name__}")
+
+
 class KeyframeInterpolator:
     def __init__(self, num_indices: Optional[int] = None, time_range: Optional[Tuple[float, float]] = None):
         """Initialize the keyframe interpolator.
@@ -33,69 +192,98 @@ class KeyframeInterpolator:
         self.keyframes: Dict[float, Tuple[Callable[[float, Dict[str, float]], float], Optional[float], Optional[Tuple[float, float, float, float]]]] = {}
         self.variables: Dict[str, Callable[[float, Dict[str, float]], float]] = {}
         self._precomputed = {}
-
+    
     def _parse_expression(self, expr: str) -> Callable[[float, Dict[str, float]], float]:
-        """Parse an expression into a safe lambda function."""
+        """Parse an expression into a safe lambda function using AST transformation."""
         # Get math functions from the current backend
         math_funcs = get_math_functions()
         
-        safe_dict = {
+        # Mapping of constants and functions that can be used in expressions
+        self.safe_funcs = {
             'sin': math_funcs['sin'], 
             'cos': math_funcs['cos'], 
             'tan': math_funcs['tan'],
             'sqrt': math_funcs['sqrt'], 
             'log': math_funcs['log'], 
             'exp': math_funcs['exp'],
+            'pow': math_funcs['pow'],
+            'abs': abs,
+            'max': max,
+            'min': min,
+            'round': round
+        }
+        
+        self.safe_constants = {
             'pi': math_funcs['pi'], 
-            'e': math_funcs['e'], 
-            'pow': math_funcs['pow'], 
+            'e': math_funcs['e'],
             'T': self.num_indices if self.num_indices is not None else 0
         }
-        tree = ast.parse(expr, mode='eval')
-        compiled = compile(tree, "<string>", "eval")
-
-        class SafeVisitor(ast.NodeVisitor):
-            def __init__(self, variables: Dict[str, Callable[[float, Dict[str, float]], float]]):
-                self.variables = variables
+        
+        # Replace ^ with ** for power operator
+        expr = expr.replace('^', '**')
+        
+        # Parse the expression to an AST
+        try:
+            tree = ast.parse(expr, mode='eval')
+        except SyntaxError as e:
+            raise ValueError(f"Invalid expression syntax: {e}")
+        
+        # First, check if the expression is safe
+        self._validate_expression_safety(tree)
+        
+        # Then, transform it to a callable
+        expression_eval = ExpressionEvaluator(self.safe_funcs, self.safe_constants, self.variables)
+        return expression_eval.create_evaluator(tree)
+    
+    def _validate_expression_safety(self, tree):
+        """Validate that an AST only contains safe operations."""
+        class SafetyValidator(ast.NodeVisitor):
+            def __init__(self, parent):
+                self.parent = parent
                 self.used_vars = set()
-
-            allowed_nodes = {
-                ast.Expression, ast.Num, ast.UnaryOp, ast.BinOp, ast.Name, ast.Call, ast.Load,
-                ast.Add, ast.Sub, ast.Mult, ast.Div, ast.Constant, ast.BitXor, ast.Pow,
-                ast.IfExp, ast.Compare, ast.Eq, ast.Mod, ast.Lt, ast.Gt, ast.LtE, ast.GtE, ast.NotEq,
-                ast.BoolOp, ast.And
-            }
-
+                
+                # Set of allowed AST node types
+                self.allowed_nodes = {
+                    # Expression types
+                    ast.Expression, ast.Num, ast.UnaryOp, ast.BinOp, ast.Name, ast.Call, ast.Load, ast.Constant,
+                    # Binary operators
+                    ast.Add, ast.Sub, ast.Mult, ast.Div, ast.Pow, 
+                    # Comparison operators
+                    ast.IfExp, ast.Compare, ast.Eq, ast.Mod, ast.Lt, ast.Gt, ast.LtE, ast.GtE, ast.NotEq,
+                    # Logical operators
+                    ast.BoolOp, ast.And, ast.Or
+                }
+                
+                # Common variable names allowed in expressions
+                self.allowed_var_names = {'t', 'x', 'y', 'z', 'a', 'b', 'c', 'd'}
+            
             def generic_visit(self, node):
                 if type(node) not in self.allowed_nodes:
                     raise ValueError(f"Unsafe operation: {type(node).__name__}")
                 super().generic_visit(node)
-
+            
             def visit_Name(self, node):
-                if node.id in self.variables:
+                if node.id in self.parent.variables:
                     self.used_vars.add(node.id)
-                elif node.id not in safe_dict and node.id != 't' and node.id not in 'abcd':
+                elif node.id in self.parent.safe_funcs or node.id in self.parent.safe_constants:
+                    # Functions and constants are fine
+                    pass
+                elif node.id in self.allowed_var_names:
+                    # Common variable names are allowed
+                    pass
+                else:
                     raise ValueError(f"Unknown name: {node.id}")
                 super().generic_visit(node)
-
+            
             def visit_Call(self, node):
-                if not isinstance(node.func, ast.Name) or node.func.id not in safe_dict:
-                    raise ValueError(f"Unsafe call: {node.func}")
+                if not isinstance(node.func, ast.Name) or node.func.id not in self.parent.safe_funcs:
+                    raise ValueError(f"Unsafe function call: {node.func}")
                 super().generic_visit(node)
-
-        visitor = SafeVisitor(self.variables)
-        visitor.visit(tree)
-        used_vars = visitor.used_vars
-
-        def lambda_func(t: float, channels: Dict[str, float] = {}) -> float:
-            eval_dict = safe_dict | {'t': t} | channels
-            for var in self.variables:
-                if var in used_vars and var not in eval_dict:
-                    eval_dict[var] = self.variables[var](t, channels)
-            return eval(compiled, {"__builtins__": {}}, eval_dict)
-
-        return lambda_func
-
+        
+        validator = SafetyValidator(self)
+        validator.visit(tree)
+        return validator.used_vars
+    
     def set_keyframe(self, index: float, value: Union[int, float, str], derivative: Optional[float] = None, control_points: Optional[Tuple[float, float, float, float]] = None):
         """Set a keyframe with optional derivative and control points.
         
@@ -433,9 +621,6 @@ class KeyframeInterpolator:
                 result[i] = a * t*t + b * t + c
                 
         return result
-    
-    # Add implementations for other interpolation methods (_cubic_interpolate_gpu, _hermite_interpolate_gpu, etc.)
-    # These would follow a similar pattern but with the specific math for each method
     
     def _cubic_interpolate_gpu(self, times, values, t_array):
         """GPU-accelerated cubic spline interpolation."""
