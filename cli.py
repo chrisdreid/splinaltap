@@ -5,7 +5,9 @@ import sys
 import argparse
 import json
 import os
-from typing import Dict, List, Optional, Tuple, Any
+import csv
+import yaml
+from typing import Dict, List, Optional, Tuple, Any, Union
 import matplotlib.pyplot as plt
 
 # Use absolute or relative imports based on context
@@ -411,25 +413,51 @@ def evaluate_cmd(args: argparse.Namespace) -> None:
         method = channel_methods["default"]
     
     # Evaluate at all points
-    results = []
+    values = []
     for point in points:
-        results.append(interpolator.get_value(point, method, channels))
+        values.append(interpolator.get_value(point, method, channels))
     
-    # Output results
-    if args.output_file:
-        with open(args.output_file, 'w') as f:
-            if len(results) == 1:
-                f.write(str(results[0]))
-            else:
-                # For multiple points, output as x,y pairs
-                for point, result in zip(points, results):
-                    f.write(f"{point},{result}\n")
-    else:
-        if len(results) == 1:
-            print(results[0])
-        else:
-            for point, result in zip(points, results):
-                print(f"{point},{result}")
+    # Convert to a format compatible with format_output
+    results = {
+        "default": {
+            method: values
+        }
+    }
+    
+    # Determine content type from args or file extension
+    content_type = args.content_type
+    
+    if not content_type and args.output_file:
+        # Try to determine from file extension
+        ext = os.path.splitext(args.output_file)[1].lower()
+        if ext == '.json':
+            content_type = 'json'
+        elif ext == '.csv':
+            content_type = 'csv'
+        elif ext == '.yaml' or ext == '.yml':
+            content_type = 'yaml'
+        elif ext == '.txt':
+            content_type = 'text'
+        elif ext == '.npy' and HAS_NUMPY:
+            # Special case for numpy
+            if HAS_NUMPY:
+                # Save to numpy format
+                data = np.column_stack([points, values])
+                np.save(args.output_file, data)
+                print(f"Saved results to {args.output_file} in NumPy format")
+                return
+    
+    # Default to json if not specified
+    if not content_type:
+        content_type = 'json'
+    
+    # If only a single point was evaluated and plain text output is requested, simplify
+    if len(points) == 1 and content_type == 'text' and not args.output_file:
+        print(values[0])
+        return
+    
+    # Format and output the results
+    format_output({}, points, results, content_type, args.output_file)
 
 
 def parse_sample_spec(sample_spec: str) -> Tuple[float, Dict[str, List[str]]]:
@@ -460,6 +488,90 @@ def parse_sample_spec(sample_spec: str) -> Tuple[float, Dict[str, List[str]]]:
             
     return (sample_value, channel_methods)
     
+def format_output(data: Dict, points: List[float], results: Dict, content_type: str = "json", output_file: Optional[str] = None) -> None:
+    """Format and output the results based on the specified content type.
+    
+    Args:
+        data: The data to output
+        points: The sample points
+        results: The results dictionary
+        content_type: The content type/format (json, csv, text, yaml)
+        output_file: Optional output file path
+    """
+    formatted_output = None
+    
+    if content_type == "json":
+        # Format as JSON
+        output = {"points": points, "results": {}}
+        
+        for channel, method_values in results.items():
+            output["results"][channel] = {}
+            for method, values in method_values.items():
+                # Convert to list for safe JSON serialization
+                values_as_list = values if isinstance(values, list) else list(values)
+                output["results"][channel][method] = values_as_list
+        
+        formatted_output = json.dumps(output, indent=2)
+        
+    elif content_type == "csv":
+        # Format as CSV
+        import io
+        csv_buffer = io.StringIO()
+        csv_writer = csv.writer(csv_buffer)
+        
+        # Write header
+        header = ["point"]
+        for channel, method_values in results.items():
+            for method in method_values.keys():
+                header.append(f"{channel}_{method}")
+        csv_writer.writerow(header)
+        
+        # Write data rows
+        for i, point in enumerate(points):
+            row = [point]
+            for channel, method_values in results.items():
+                for method, values in method_values.items():
+                    # Convert to list to ensure safe access
+                    values_as_list = values if isinstance(values, list) else list(values)
+                    row.append(values_as_list[i])
+            csv_writer.writerow(row)
+        
+        formatted_output = csv_buffer.getvalue()
+        
+    elif content_type == "yaml":
+        # Format as YAML
+        output = {"points": points, "results": {}}
+        
+        for channel, method_values in results.items():
+            output["results"][channel] = {}
+            for method, values in method_values.items():
+                # Convert to list for safe serialization
+                values_as_list = values if isinstance(values, list) else list(values)
+                output["results"][channel][method] = values_as_list
+        
+        formatted_output = yaml.dump(output, sort_keys=False)
+        
+    else:  # Default to "text"
+        # Format as plain text
+        lines = []
+        for i, point in enumerate(points):
+            line = f"{point}"
+            for channel, method_values in results.items():
+                for method, values in method_values.items():
+                    # Convert to list to ensure safe access
+                    values_as_list = values if isinstance(values, list) else list(values)
+                    line += f",{channel}:{method}={values_as_list[i]}"
+            lines.append(line)
+        
+        formatted_output = "\n".join(lines)
+    
+    # Output the formatted data
+    if output_file:
+        with open(output_file, 'w') as f:
+            f.write(formatted_output)
+    else:
+        print(formatted_output)
+
 def sample_cmd(args: argparse.Namespace) -> None:
     """Handle the sample command."""
     # Create interpolator from file or direct keyframes
@@ -582,89 +694,45 @@ def sample_cmd(args: argparse.Namespace) -> None:
             
             results[channel] = values_by_method
     
-    # Output results in the appropriate format
-    if args.output_file:
-        if args.output_file.endswith('.json'):
-            # For JSON, include points and all values by channel and method
-            with open(args.output_file, 'w') as f:
-                output = {"points": points, "results": {}}
-                
-                for channel, method_values in results.items():
-                    output["results"][channel] = {}
-                    for method, values in method_values.items():
-                        # Convert to list for safe JSON serialization
-                        values_as_list = values if isinstance(values, list) else list(values)
-                        output["results"][channel][method] = values_as_list
-                
-                json.dump(output, f, indent=2)
-        elif args.output_file.endswith('.csv'):
-            with open(args.output_file, 'w') as f:
-                # Write header
-                header = ["point"]
-                for channel, method_values in results.items():
-                    for method in method_values.keys():
-                        header.append(f"{channel}_{method}")
-                f.write(",".join(header) + "\n")
-                
-                # Write data rows
-                for i, point in enumerate(points):
-                    row = [str(point)]
-                    for channel, method_values in results.items():
-                        for method, values in method_values.items():
-                            # Convert to list to ensure safe access, avoid direct indexing of complex array types
-                            values_as_list = values if isinstance(values, list) else list(values)
-                            row.append(str(values_as_list[i]))
-                    f.write(",".join(row) + "\n")
-        elif args.output_file.endswith('.npy') and HAS_NUMPY:
-            # For NumPy, save as structured array
-            if HAS_NUMPY:
-                # Flatten results into columns
-                columns = [points]
-                column_names = ['point']
-                
-                for channel, method_values in results.items():
-                    for method, values in method_values.items():
-                        # Convert to list for consistent handling
-                        values_as_list = values if isinstance(values, list) else list(values)
-                        columns.append(values_as_list)
-                        column_names.append(f"{channel}_{method}")
-                
-                # Stack columns and save
-                result = np.column_stack(columns)
-                np.save(args.output_file, result)
-            else:
-                # Fallback if numpy not available
-                with open(args.output_file, 'w') as f:
-                    for i, point in enumerate(points):
-                        row = [str(point)]
-                        for channel, method_values in results.items():
-                            for method, values in method_values.items():
-                                # Convert to list to ensure safe access
-                                values_as_list = values if isinstance(values, list) else list(values)
-                                row.append(str(values_as_list[i]))
-                        f.write(",".join(row) + "\n")
-        else:
-            # Default text output
-            with open(args.output_file, 'w') as f:
-                # Write data in a readable format
-                for i, point in enumerate(points):
-                    f.write(f"{point}")
-                    for channel, method_values in results.items():
-                        for method, values in method_values.items():
-                            # Convert to list to ensure safe access
-                            values_as_list = values if isinstance(values, list) else list(values)
-                            f.write(f",{channel}:{method}={values_as_list[i]}")
-                    f.write("\n")
-    else:
-        # Print to console
-        for i, point in enumerate(points):
-            line = f"{point}"
+    # Determine content type from args or file extension
+    content_type = args.content_type
+    
+    if not content_type and args.output_file:
+        # Try to determine from file extension
+        ext = os.path.splitext(args.output_file)[1].lower()
+        if ext == '.json':
+            content_type = 'json'
+        elif ext == '.csv':
+            content_type = 'csv'
+        elif ext == '.yaml' or ext == '.yml':
+            content_type = 'yaml'
+        elif ext == '.txt':
+            content_type = 'text'
+        elif ext == '.npy' and HAS_NUMPY:
+            # Special case for numpy
+            # Flatten results into columns
+            columns = [points]
+            column_names = ['point']
+            
             for channel, method_values in results.items():
                 for method, values in method_values.items():
-                    # Convert to list to ensure safe access
+                    # Convert to list for consistent handling
                     values_as_list = values if isinstance(values, list) else list(values)
-                    line += f",{channel}:{method}={values_as_list[i]}"
-            print(line)
+                    columns.append(values_as_list)
+                    column_names.append(f"{channel}_{method}")
+            
+            # Stack columns and save
+            result = np.column_stack(columns)
+            np.save(args.output_file, result)
+            print(f"Saved results to {args.output_file} in NumPy format")
+            return
+    
+    # Default to json if not specified
+    if not content_type:
+        content_type = 'json'
+    
+    # Format and output the results
+    format_output({}, points, results, content_type, args.output_file)
 
 
 def scene_info_cmd(args: argparse.Namespace) -> None:
@@ -729,6 +797,124 @@ def scene_extract_cmd(args: argparse.Namespace) -> None:
     # Save the new scene
     new_scene.save(args.output_file)
     print(f"Extracted interpolator '{args.interpolator_name}' from scene '{scene.name}' to {args.output_file}")
+    
+def generate_template_cmd(args: argparse.Namespace) -> None:
+    """Handle the generate-template command."""
+    # Create a template JSON file with keyframes and optional args
+    template = {
+        "range": [0.0, 1.0],
+        "variables": {
+            "amplitude": 2.5,
+            "frequency": 0.5
+        },
+        "keyframes": []
+    }
+    
+    # If keyframes were specified, add them to the template
+    if args.keyframes:
+        try:
+            # Create an interpolator from the keyframes
+            interpolator = create_keyframe_interpolator_from_args(args)
+            
+            # Extract keyframes and add them to the template
+            for position, (value, derivative, control_points) in sorted(interpolator.keyframes.items()):
+                # Evaluate the raw value if it's an expression
+                if callable(value):
+                    try:
+                        value = value(position, position, {})
+                    except:
+                        value = f"Expression at position {position}"
+                
+                kf = {
+                    "position": position,
+                    "value": value
+                }
+                
+                if derivative is not None:
+                    kf["derivative"] = derivative
+                    
+                if control_points is not None:
+                    kf["control_points"] = list(control_points)
+                    
+                template["keyframes"].append(kf)
+        except Exception as e:
+            print(f"Warning: Could not process keyframes: {e}")
+            # Add some example keyframes
+            template["keyframes"] = [
+                {"position": 0.0, "value": 0},
+                {"position": 0.5, "value": "sin(t * frequency) * amplitude"},
+                {"position": 1.0, "value": 10}
+            ]
+    else:
+        # Add example keyframes
+        template["keyframes"] = [
+            {"position": 0.0, "value": 0},
+            {"position": 0.5, "value": "sin(t * frequency) * amplitude"},
+            {"position": 1.0, "value": 10}
+        ]
+    
+    # If dimensions are specified, create multi-dimensional template
+    if args.dimensions and args.dimensions > 1:
+        multi_template = {
+            "range": template["range"],
+            "variables": template["variables"],
+            "dimensions": {}
+        }
+        
+        # Create a dimension for each axis
+        dim_names = ["x", "y", "z"] + [f"dim{i}" for i in range(3, args.dimensions)]
+        for i, name in enumerate(dim_names[:args.dimensions]):
+            # Vary the example keyframes slightly for each dimension
+            if i == 0:
+                kf_values = template["keyframes"]
+            else:
+                # Create varied keyframes for other dimensions
+                kf_values = []
+                for kf in template["keyframes"]:
+                    new_kf = kf.copy()
+                    if isinstance(new_kf["value"], (int, float)):
+                        new_kf["value"] = new_kf["value"] + i * 5  # Offset by 5 * dimension index
+                    kf_values.append(new_kf)
+            
+            multi_template["dimensions"][name] = {
+                "keyframes": kf_values
+            }
+        
+        template = multi_template
+    
+    # Add scene wrapper if requested
+    if args.scene:
+        scene_template = {
+            "name": "MyAnimation",
+            "metadata": {
+                "description": "Generated template animation",
+                "author": "SplinalTap User",
+                "created": "Generated template"
+            },
+            "variables": template.get("variables", {}),
+            "interpolators": {
+                "main": template
+            }
+        }
+        template = scene_template
+    
+    # Save the template to the output file
+    content_type = args.content_type or "json"
+    
+    if not args.output_file:
+        print("Error: --output-file is required for --generate-template")
+        return 1
+    
+    with open(args.output_file, 'w') as f:
+        if content_type == "json":
+            json.dump(template, f, indent=2)
+        elif content_type == "yaml":
+            yaml.dump(template, f, sort_keys=False)
+        else:
+            # Default to JSON
+            json.dump(template, f, indent=2)
+            
+    print(f"Generated template file: {args.output_file}")
 
 def backend_cmd(args: argparse.Namespace) -> None:
     """Handle the backend command."""
@@ -806,6 +992,8 @@ def create_parser() -> argparse.ArgumentParser:
                                  dest="command", help="Extract an interpolator from a scene to a new file")
     command_exclusive.add_argument("--backend", action="store_const", const="backend", 
                                  dest="command", help="Manage compute backends")
+    command_exclusive.add_argument("--generate-template", action="store_const", const="generate-template",
+                                 dest="command", help="Generate a template input file")
     
     # Create arguments for each command
     # Input sources (mutually exclusive group)
@@ -832,6 +1020,9 @@ def create_parser() -> argparse.ArgumentParser:
                       help="Use index mode (non-normalized) instead of the default 0-1 normalized range")
     parser.add_argument("--format", choices=["json", "pickle", "python", "yaml", "numpy"],
                       help="Format for scene conversion")
+    parser.add_argument("--content-type", choices=["json", "csv", "yaml", "text"],
+                      help="Format for output data (default: json or determined from output file extension)")
+    parser.add_argument("--scene", action="store_true", help="Generate a scene template (with --generate-template)")
     parser.add_argument("--interpolator-name", help="Name of the interpolator to extract")
     
     # Backend specific options
@@ -881,6 +1072,9 @@ def main():
         elif args.command == "scene-extract" and (not args.input_file or not args.output_file or not args.interpolator_name):
             print("Error: --input-file, --output-file, and --interpolator-name are required for --scene-extract")
             return 1
+        elif args.command == "generate-template" and not args.output_file:
+            print("Error: --output-file is required for --generate-template")
+            return 1
         
         # Execute the appropriate command
         if args.command == "visualize":
@@ -895,6 +1089,8 @@ def main():
             scene_convert_cmd(args)
         elif args.command == "scene-extract":
             scene_extract_cmd(args)
+        elif args.command == "generate-template":
+            generate_template_cmd(args)
         elif args.command == "backend":
             backend_cmd(args)
         else:

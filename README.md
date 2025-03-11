@@ -42,11 +42,14 @@ pip install splinaltap
 
 ### Optional Dependencies
 
-For enhanced performance, you can install NumPy (CPU acceleration) or GPU acceleration libraries:
+For enhanced performance and additional features, you can install these dependencies:
 
 ```bash
 # For NumPy support (CPU acceleration)
 pip install numpy
+
+# For YAML output format support
+pip install pyyaml
 
 # For CUDA 11.x GPU support
 pip install cupy-cuda11x
@@ -140,7 +143,7 @@ SplinalTap can be used in two ways, both of which keep all code contained within
 python /path/to/splinaltap --help
 
 # If installed with pip (production mode):
-splinaltap --help
+python splinaltap --help
 ```
 
 **IMPORTANT**: All CLI functionality is contained entirely within the `splinaltap` directory. 
@@ -155,27 +158,40 @@ This design decision ensures:
 
 ```bash
 # Visualize interpolation
-splinaltap --visualize --input-file input.json --methods cubic --output-file output.png
+python splinaltap --visualize --input-file input.json --methods cubic --output-file output.png
 
 # Compare multiple interpolation methods (requires --visualize command)
-splinaltap --visualize --input-file input.json --methods linear cubic hermite bezier --compare --output-file comparison.png
+python splinaltap --visualize --input-file input.json --methods linear cubic hermite bezier --compare --output-file comparison.png
 
 # Default behavior: sample/evaluate interpolated values (no command needed)
-splinaltap --input-file input.json --samples 0.25 0.5 0.75 --output-file values.csv
-splinaltap --input-file input.json --samples 1000 --range 0,1 --output-file evenly_spaced.csv
+python splinaltap --input-file input.json --samples 0.25 0.5 0.75 --output-file values.csv
+python splinaltap --input-file input.json --samples 1000 --range 0,1 --output-file evenly_spaced.csv
 
 # Define and use keyframes directly on command line (0-1 normalized range)
-splinaltap --keyframes 0:0@cubic 0.5:10@cubic 1:0@cubic --samples 100 --output-file from_cli.csv
+python splinaltap --keyframes 0:0@cubic 0.5:10@cubic 1:0@cubic --samples 100 --output-file from_cli.csv
+
+# Use different output formats with --content-type
+python splinaltap --keyframes 0:0 0.5:10 1:0 --samples 10 --content-type json
+python splinaltap --keyframes 0:0 0.5:10 1:0 --samples 10 --content-type csv --output-file output.csv
+python splinaltap --keyframes 0:0 0.5:10 1:0 --samples 10 --content-type yaml
+python splinaltap --keyframes 0:0 0.5:10 1:0 --samples 10 --content-type text
+
+# Generate template files to use as starting points
+python splinaltap --generate-template --output-file template.json
+python splinaltap --generate-template --keyframes 0:0 0.5:10 1:0 --output-file my_template.json
+python splinaltap --generate-template --dimensions 3 --output-file vector_template.json
+python splinaltap --generate-template --scene --output-file scene_template.json
+python splinaltap --generate-template --output-file template.yaml --content-type yaml
 
 # Work with scenes (multiple interpolators)
-splinaltap --scene-info --input-file scene.json
-splinaltap --scene-convert --input-file scene.json --output-file scene.yaml
-splinaltap --scene-extract --input-file scene.json --interpolator-name position_x --output-file extracted.json
+python splinaltap --scene-info --input-file scene.json
+python splinaltap --scene-convert --input-file scene.json --output-file scene.yaml
+python splinaltap --scene-extract --input-file scene.json --interpolator-name position_x --output-file extracted.json
 
 # Manage compute backends
-splinaltap --backend --list
-splinaltap --backend --use-backend numpy
-splinaltap --backend --use-best
+python splinaltap --backend --list
+python splinaltap --backend --use-backend numpy
+python splinaltap --backend --use-best
 ```
 
 ### Input File Format
@@ -268,22 +284,22 @@ By default, all positions are normalized to the 0-1 range for better floating-po
 
 ```bash
 # Define keyframes directly in normalized 0-1 range and sample 100 points
-splinaltap --keyframes 0:0@cubic 0.5:10@cubic 1:0@cubic --samples 100 
+python splinaltap --keyframes 0:0@cubic 0.5:10@cubic 1:0@cubic --samples 100 
 
 # Use expressions in keyframes (method is optional, defaults to cubic)
-splinaltap --keyframes "0:0" "0.25:sin(t)" "1:t^2" --samples 100
+python splinaltap --keyframes "0:0" "0.25:sin(t)" "1:t^2" --samples 100
 
 # Include derivatives for Hermite interpolation
-splinaltap --keyframes "0:0@hermite{deriv=0}" "0.5:10@hermite{deriv=2}" "1:0@hermite{deriv=0}" --samples 100
+python splinaltap --keyframes "0:0@hermite{deriv=0}" "0.5:10@hermite{deriv=2}" "1:0@hermite{deriv=0}" --samples 100
 
 # Define control points for Bezier interpolation (control points are also in 0-1 space)
-splinaltap --keyframes "0:0@bezier{cp=0.1,0,0.2,3}" "0.5:10@bezier{cp=0.6,12,0.7,8}" "1:0@bezier{cp=0.8,-2,0.9,0}" --samples 100
+python splinaltap --keyframes "0:0@bezier{cp=0.1,0,0.2,3}" "0.5:10@bezier{cp=0.6,12,0.7,8}" "1:0@bezier{cp=0.8,-2,0.9,0}" --samples 100
 
 # Only visualization requires an explicit command
-splinaltap --visualize --keyframes 0:0@cubic 0.3:5@linear 0.7:2@cubic 1:10@cubic --compare
+python splinaltap --visualize --keyframes 0:0@cubic 0.3:5@linear 0.7:2@cubic 1:10@cubic --compare
 
 # Use variables in expressions
-splinaltap --keyframes "0:0" "0.5:a*sin(t)" "1:b*t" --variables "a=2.5,b=1.5" --samples 100
+python splinaltap --keyframes "0:0" "0.5:a*sin(t)" "1:b*t" --variables "a=2.5,b=1.5" --samples 100
 ```
 
 The keyframe syntax is: `position:value@method{parameters}` where:
@@ -310,7 +326,7 @@ If you need to use absolute indices instead of normalized positions, use the `--
 
 ```bash
 # Use absolute indices rather than normalized 0-1 positions
-splinaltap --keyframes 0:0@cubic 5:10@cubic 10:0@cubic --use-indices --samples 100
+python splinaltap --keyframes 0:0@cubic 5:10@cubic 10:0@cubic --use-indices --samples 100
 ```
 
 #### Default Behavior and Commands
@@ -319,9 +335,9 @@ Sampling/evaluation is the default behavior when no specific command is provided
 
 ```bash
 # These all sample/evaluate interpolated values (default behavior)
-splinaltap --keyframes 0:0@cubic 0.5:10@cubic 1:0@cubic --samples 0.25 0.5 0.75
-splinaltap --input-file input.json --samples 100
-splinaltap --keyframes 0:0@cubic 0.5:10@bezier{cp=0.6,12,0.7,8} 1:0@cubic --samples 1000 --range 0,1
+python splinaltap --keyframes 0:0@cubic 0.5:10@cubic 1:0@cubic --samples 0.25 0.5 0.75
+python splinaltap --input-file input.json --samples 100
+python splinaltap --keyframes 0:0@cubic 0.5:10@bezier{cp=0.6,12,0.7,8} 1:0@cubic --samples 1000 --range 0,1
 ```
 
 Specialized operations require explicit commands:
@@ -335,16 +351,16 @@ SplinalTap supports advanced syntax for sample points with channel-specific meth
 
 ```bash
 # Sample with specific channels and methods (sample points in 0-1 normalized range)
-splinaltap --sample --input-file input.json --samples 0.5@channel-a:linear@channel-b:cubic:hermite
+python splinaltap --sample --input-file input.json --samples 0.5@channel-a:linear@channel-b:cubic:hermite
 
 # Sample count with multiple methods for a channel
-splinaltap --sample --keyframes 0:0 0.5:10 1:0 --samples 100 @default:linear:cubic:hermite
+python splinaltap --sample --keyframes 0:0 0.5:10 1:0 --samples 100 @default:linear:cubic:hermite
 
 # Combine sample points with different methods
-splinaltap --sample --keyframes 0:0 0.5:10 1:0 --samples 0.25@x:linear 0.5@x:cubic 0.75@x:hermite
+python splinaltap --sample --keyframes 0:0 0.5:10 1:0 --samples 0.25@x:linear 0.5@x:cubic 0.75@x:hermite
 
 # Mix sample count and channels
-splinaltap --sample --input-file input.json --samples 1000 @position:linear @rotation:hermite
+python splinaltap --sample --input-file input.json --samples 1000 @position:linear @rotation:hermite
 ```
 
 The general syntax format is: `VALUE[@CHANNEL:METHOD1:METHOD2...][@CHANNEL:METHOD...]`
