@@ -96,11 +96,19 @@ def parse_method_parameters(method_str: str) -> Tuple[str, Optional[Dict[str, st
     # Parse parameters
     params = {}
     if param_str:
-        param_parts = param_str.split(',')
-        for part in param_parts:
-            if '=' in part:
-                key, value = part.split('=', 1)
-                params[key.strip()] = value.strip()
+        # First, handle key=value pairs
+        if '=' in param_str:
+            # Find the key name before the first =
+            key_end = param_str.find('=')
+            key = param_str[:key_end].strip()
+            # Everything after the key= is the value, might contain commas
+            value = param_str[key_end + 1:].strip()
+            params[key] = value
+        else:
+            # No key=value format, just split by commas
+            param_parts = param_str.split(',')
+            for i, part in enumerate(param_parts):
+                params[f"param{i}"] = part.strip()
     
     return method_name, params
 
@@ -151,12 +159,31 @@ def create_keyframe_interpolator_from_args(args: argparse.Namespace) -> Keyframe
                 derivative = float(params["deriv"])
             except ValueError:
                 raise ValueError(f"Invalid derivative value in {kf_str}")
-        elif method_name == "bezier" and params and "cp" in params:
+        elif method_name == "bezier" and params:
             try:
-                cp_parts = params["cp"].split(',')
-                if len(cp_parts) == 4:
-                    control_points = tuple(float(cp) for cp in cp_parts)
+                # There are two possible formats:
+                # 1. bezier{cp=x1,y1,x2,y2} - where cp is the parameter name
+                # 2. bezier{x1,y1,x2,y2} - where the values are directly given
+                
+                cp_values = None
+                
+                # Check if we have a 'cp' parameter
+                if "cp" in params:
+                    cp_str = params["cp"].strip()
+                    cp_values = [p.strip() for p in cp_str.split(',')]
+                # Check if we have direct parameters
+                elif len(params) >= 4:
+                    # Get values from param0, param1, etc.
+                    cp_values = []
+                    for i in range(4):
+                        if f"param{i}" in params:
+                            cp_values.append(params[f"param{i}"])
+                
+                if cp_values and len(cp_values) == 4:
+                    # Convert each part to a float, handling negative numbers
+                    control_points = tuple(float(cp) for cp in cp_values)
                 else:
+                    # If we reach here, the format wasn't recognized
                     raise ValueError(f"Bezier control points must be 4 comma-separated values in {kf_str}")
             except ValueError as e:
                 if "Bezier control points" in str(e):
