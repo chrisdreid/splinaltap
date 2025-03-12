@@ -1033,10 +1033,22 @@ def scene_extract_cmd(args: argparse.Namespace) -> None:
     new_scene.save(args.output_file)
     print(f"Extracted interpolator '{args.interpolator_name}' from scene '{scene.name}' to {args.output_file}")
     
-def generate_template_cmd(args: argparse.Namespace) -> None:
-    """Handle the generate-template command."""
-    # Initialize template structure
-    template = None
+def generate_scene_cmd(args: argparse.Namespace) -> None:
+    """Handle the generate-scene command."""
+    # Initialize scene template structure
+    scene_template = {
+        "name": "MyAnimation",
+        "metadata": {
+            "description": "Generated scene animation",
+            "author": "SplinalTap User",
+            "created": "Generated scene"
+        },
+        "variables": {
+            "amplitude": 2.5,
+            "frequency": 0.5
+        },
+        "interpolators": {}
+    }
     
     # If an input file was provided, use it as the base
     if args.input_file:
@@ -1044,21 +1056,30 @@ def generate_template_cmd(args: argparse.Namespace) -> None:
             with open(args.input_file, 'r') as f:
                 template = json.load(f)
                 print(f"Loaded template base from {args.input_file}")
+                
+                # If the template is already a scene (has interpolators), use it directly
+                if "interpolators" in template:
+                    scene_template = template
+                else:
+                    # Otherwise, use it as an interpolator in our scene
+                    scene_template["interpolators"]["main"] = template
         except Exception as e:
             print(f"Warning: Could not load input file: {e}")
-            
-    # If no template loaded from file, create a new one
-    if template is None:
-        template = {
-            "range": [0.0, 1.0],
-            "variables": {
-                "amplitude": 2.5,
-                "frequency": 0.5
-            },
-            "keyframes": []
-        }
     
-    # If keyframes were specified, add them to the template
+    # Create a default main interpolator if none exists
+    if not scene_template["interpolators"]:
+        main_interpolator = {
+            "range": [0.0, 1.0],
+            "variables": scene_template.get("variables", {}).copy(),
+            "keyframes": [
+                {"index": 0.0, "value": 0},
+                {"index": 0.5, "value": "sin(t * frequency) * amplitude"},
+                {"index": 1.0, "value": 10}
+            ]
+        }
+        scene_template["interpolators"]["main"] = main_interpolator
+    
+    # If keyframes were specified, add them to the main interpolator
     if args.keyframes:
         try:
             # Create an interpolator from the keyframes
@@ -1096,104 +1117,91 @@ def generate_template_cmd(args: argparse.Namespace) -> None:
                     
                 keyframes_list.append(kf)
             
-            # Update template with keyframes - handle both direct keyframes and dimensions
-            if "dimensions" in template:
-                # Multi-dimensional template - add to first dimension if possible
-                dims = list(template["dimensions"].keys())
+            # Update or create the main interpolator with these keyframes
+            main_interp = scene_template["interpolators"].get("main", {})
+            
+            # Check if the main interpolator uses dimensions
+            if "dimensions" in main_interp:
+                # Multi-dimensional interpolator - add to first dimension if possible
+                dims = list(main_interp["dimensions"].keys())
                 if dims:
-                    template["dimensions"][dims[0]]["keyframes"] = keyframes_list
+                    main_interp["dimensions"][dims[0]]["keyframes"] = keyframes_list
             else:
-                # Single-dimensional template
-                template["keyframes"] = keyframes_list
+                # Single-dimensional interpolator
+                main_interp["keyframes"] = keyframes_list
+                
+            # Make sure to update the interpolator in the scene
+            scene_template["interpolators"]["main"] = main_interp
                 
         except Exception as e:
             print(f"Warning: Could not process keyframes: {e}")
-            # Add default keyframes if none exist yet
-            if not template.get("keyframes") and "dimensions" not in template:
-                template["keyframes"] = [
-                    {"index": 0.0, "value": 0},
-                    {"index": 0.5, "value": "sin(t * frequency) * amplitude"},
-                    {"index": 1.0, "value": 10}
-                ]
-    elif not args.input_file:
-        # No input file and no keyframes, use default keyframes
-        template["keyframes"] = [
-            {"index": 0.0, "value": 0},
-            {"index": 0.5, "value": "sin(t * frequency) * amplitude"},
-            {"index": 1.0, "value": 10}
-        ]
     
-    # If dimensions are specified, create multi-dimensional template
-    if args.dimensions and args.dimensions > 1 and "dimensions" not in template:
-        # Convert to multi-dimensional if it isn't already
-        keyframes = template.get("keyframes", [])
+    # If dimensions are specified, create multi-dimensional main interpolator
+    if args.dimensions and args.dimensions > 1:
+        main_interp = scene_template["interpolators"].get("main", {})
         
-        multi_template = {
-            "range": template.get("range", [0.0, 1.0]),
-            "variables": template.get("variables", {}),
-            "dimensions": {}
-        }
-        
-        # Create a dimension for each axis
-        dim_names = ["x", "y", "z"] + [f"dim{i}" for i in range(3, args.dimensions)]
-        for i, name in enumerate(dim_names[:args.dimensions]):
-            # Vary the example keyframes slightly for each dimension
-            if i == 0:
-                kf_values = keyframes
-            else:
-                # Create varied keyframes for other dimensions
-                kf_values = []
-                for kf in keyframes:
-                    new_kf = kf.copy()
-                    if isinstance(new_kf.get("value"), (int, float)):
-                        new_kf["value"] = new_kf["value"] + i * 5  # Offset by 5 * dimension index
-                    kf_values.append(new_kf)
+        # Only convert if not already multi-dimensional
+        if "dimensions" not in main_interp:
+            # Convert to multi-dimensional
+            keyframes = main_interp.get("keyframes", [])
             
-            multi_template["dimensions"][name] = {
-                "keyframes": kf_values
+            multi_template = {
+                "range": main_interp.get("range", [0.0, 1.0]),
+                "variables": main_interp.get("variables", {}),
+                "dimensions": {}
             }
-        
-        template = multi_template
+            
+            # Create a dimension for each axis
+            dim_names = ["x", "y", "z"] + [f"dim{i}" for i in range(3, args.dimensions)]
+            for i, name in enumerate(dim_names[:args.dimensions]):
+                # Vary the example keyframes slightly for each dimension
+                if i == 0:
+                    kf_values = keyframes
+                else:
+                    # Create varied keyframes for other dimensions
+                    kf_values = []
+                    for kf in keyframes:
+                        new_kf = kf.copy()
+                        if isinstance(new_kf.get("value"), (int, float)):
+                            new_kf["value"] = new_kf["value"] + i * 5  # Offset by 5 * dimension index
+                        kf_values.append(new_kf)
+                
+                multi_template["dimensions"][name] = {
+                    "keyframes": kf_values
+                }
+            
+            # Update the main interpolator
+            scene_template["interpolators"]["main"] = multi_template
     
-    # Add scene wrapper if requested
-    if args.scene and "interpolators" not in template:
-        scene_template = {
-            "name": "MyAnimation",
-            "metadata": {
-                "description": "Generated template animation",
-                "author": "SplinalTap User",
-                "created": "Generated template"
-            },
-            "variables": template.get("variables", {}),
-            "interpolators": {
-                "main": template
-            }
-        }
-        template = scene_template
+    # Add version information to the scene
+    scene_template["version"] = "1.0"
     
-    # Save the template to the output file
-    content_type = args.content_type
+    # Determine output filepath
+    filepath = args.scene_path if hasattr(args, 'scene_path') else args.output_file
     
-    if not args.output_file:
-        print("Error: --output-file is required for --generate-template")
+    if not filepath:
+        print("Error: A filepath must be provided for --generate-scene")
         return 1
     
-    # If no content type specified, determine from output file extension
-    if not content_type and args.output_file:
-        ext = os.path.splitext(args.output_file)[1].lower()
+    # Determine content type from file extension
+    content_type = args.content_type
+    
+    if not content_type:
+        ext = os.path.splitext(filepath)[1].lower()
         if ext == '.yaml' or ext == '.yml':
             content_type = 'yaml'
         else:
             content_type = 'json'
     
-    with open(args.output_file, 'w') as f:
+    # Write the scene file
+    with open(filepath, 'w') as f:
         if content_type == "yaml":
-            yaml.dump(template, f, sort_keys=False)
+            yaml.dump(scene_template, f, sort_keys=False)
         else:
             # Default to JSON
-            json.dump(template, f, indent=2)
+            json.dump(scene_template, f, indent=2)
             
-    print(f"Generated template file: {args.output_file}")
+    print(f"Generated scene file: {filepath}")
 
 def backend_cmd(args: argparse.Namespace) -> None:
     """Handle the backend command."""
@@ -1271,8 +1279,8 @@ def create_parser() -> argparse.ArgumentParser:
                                  dest="command", help="Extract an interpolator from a scene to a new file")
     command_exclusive.add_argument("--backend", action="store_const", const="backend", 
                                  dest="command", help="Manage compute backends")
-    command_exclusive.add_argument("--generate-template", action="store_const", const="generate-template",
-                                 dest="command", help="Generate a template input file")
+    command_exclusive.add_argument("--generate-scene", action="store_const", const="generate-scene",
+                                 dest="command", help="Generate a scene template file at the specified filepath")
     
     # Create arguments for each command
     # Input sources (mutually exclusive group)
@@ -1303,7 +1311,7 @@ def create_parser() -> argparse.ArgumentParser:
                       help="Format for scene conversion")
     parser.add_argument("--content-type", choices=["json", "csv", "yaml", "text"],
                       help="Format for output data (default: json or determined from output file extension)")
-    parser.add_argument("--scene", action="store_true", help="Generate a scene template (with --generate-template)")
+    parser.add_argument("--scene-path", help="Output filepath for scene generation (with --generate-scene)")
     parser.add_argument("--interpolator-name", help="Name of the interpolator to extract")
     
     # Backend specific options
@@ -1358,8 +1366,8 @@ def main():
         elif args.command == "scene-extract" and (not args.input_file or not args.output_file or not args.interpolator_name):
             print("Error: --input-file, --output-file, and --interpolator-name are required for --scene-extract")
             return 1
-        elif args.command == "generate-template" and not args.output_file:
-            print("Error: --output-file is required for --generate-template")
+        elif args.command == "generate-scene" and not (args.scene_path or args.output_file):
+            print("Error: --scene-path is required for --generate-scene")
             return 1
         
         # Execute the appropriate command
@@ -1375,8 +1383,8 @@ def main():
             scene_convert_cmd(args)
         elif args.command == "scene-extract":
             scene_extract_cmd(args)
-        elif args.command == "generate-template":
-            generate_template_cmd(args)
+        elif args.command == "generate-scene":
+            generate_scene_cmd(args)
         elif args.command == "backend":
             backend_cmd(args)
         else:

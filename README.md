@@ -209,6 +209,7 @@ The simplest format represents a single interpolator:
 
 ```json
 {
+  "version": "1.0",
   "range": [0.0, 1.0],
   "variables": {
     "amplitude": 2.5,
@@ -239,6 +240,7 @@ Multi-dimensional data (like positions, colors, etc.) can be organized in a sing
 
 ```json
 {
+  "version": "1.0",
   "range": [0.0, 1.0],
   "variables": {
     "amplitude": 2.5,
@@ -425,6 +427,7 @@ A Scene is a collection of multiple named interpolators, which can be useful for
 
 ```json
 {
+  "version": "1.0",
   "name": "MyAnimation",
   "metadata": {
     "description": "A complex animation with multiple properties",
@@ -495,6 +498,28 @@ Scene files can be:
 - Individual interpolators can be extracted with `--scene-extract`
 
 **Note**: While the CLI supports basic operations with scene files and single-dimension interpolators, complex multi-dimensional configurations are best created and managed through JSON files directly. This design choice keeps the command-line interface focused and intuitive while still providing full power through file-based workflows.
+
+### Output Format
+
+When using SplinalTap to evaluate or sample keyframes, the output follows a simple, consistent format:
+
+```json
+{
+  "version": "1.0",
+  "samples": [0.0, 0.25, 0.5, 0.75, 1.0],
+  "results": {
+    "chan-x": [0.0, 2.5, 5.0, 7.5, 10.0],
+    "position": [0.0, 2.5, 5.0, 7.5, 10.0]
+  }
+}
+```
+
+The output consists of:
+- `version`: The format version for compatibility tracking
+- `samples`: Array of sample point positions
+- `results`: Object containing channels, each with an array of values that directly correspond to the samples
+
+Each channel's values are stored as a simple array, with positions corresponding to the same index in the samples array. This makes the output easy to parse and use in any application.
 
 For more details on each command, run `splinaltap <command> --help`.
 
