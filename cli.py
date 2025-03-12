@@ -1176,11 +1176,11 @@ def generate_scene_cmd(args: argparse.Namespace) -> None:
     # Add version information to the scene
     scene_template["version"] = "1.0"
     
-    # Determine output filepath
-    filepath = args.scene_path if hasattr(args, 'scene_path') else args.output_file
+    # Get the filepath directly from args
+    filepath = args.filepath
     
     if not filepath:
-        print("Error: A filepath must be provided for --generate-scene")
+        print("Error: A filepath must be provided to generate the scene")
         return 1
     
     # Determine content type from file extension
@@ -1279,8 +1279,9 @@ def create_parser() -> argparse.ArgumentParser:
                                  dest="command", help="Extract an interpolator from a scene to a new file")
     command_exclusive.add_argument("--backend", action="store_const", const="backend", 
                                  dest="command", help="Manage compute backends")
-    command_exclusive.add_argument("--generate-scene", action="store_const", const="generate-scene",
-                                 dest="command", help="Generate a scene template file at the specified filepath")
+    command_exclusive.add_argument("--generate-scene", 
+                                 dest="generate_scene_path", metavar="FILEPATH",
+                                 help="Generate a scene template file at the specified filepath")
     
     # Create arguments for each command
     # Input sources (mutually exclusive group)
@@ -1311,7 +1312,7 @@ def create_parser() -> argparse.ArgumentParser:
                       help="Format for scene conversion")
     parser.add_argument("--content-type", choices=["json", "csv", "yaml", "text"],
                       help="Format for output data (default: json or determined from output file extension)")
-    parser.add_argument("--scene-path", help="Output filepath for scene generation (with --generate-scene)")
+#   Removed --scene-path as it's been integrated into --generate-scene directly
     parser.add_argument("--interpolator-name", help="Name of the interpolator to extract")
     
     # Backend specific options
@@ -1336,6 +1337,20 @@ def main():
             parser.print_help()
             return 0
         
+        # Handle generate-scene specially since it's not using the command framework
+        if hasattr(args, 'generate_scene_path') and args.generate_scene_path:
+            # Create a new namespace with the filepath
+            scene_args = argparse.Namespace()
+            scene_args.filepath = args.generate_scene_path
+            scene_args.input_file = args.input_file if hasattr(args, 'input_file') else None
+            scene_args.keyframes = args.keyframes if hasattr(args, 'keyframes') else None
+            scene_args.content_type = args.content_type if hasattr(args, 'content_type') else None
+            scene_args.dimensions = args.dimensions if hasattr(args, 'dimensions') else 1
+            
+            # Generate the scene
+            generate_scene_cmd(scene_args)
+            return 0
+            
         # If no command specified, decide whether to evaluate or sample based on parameters
         if not args.command:
             # If samples is an integer or --range is specified, it's a sample operation
@@ -1366,9 +1381,6 @@ def main():
         elif args.command == "scene-extract" and (not args.input_file or not args.output_file or not args.interpolator_name):
             print("Error: --input-file, --output-file, and --interpolator-name are required for --scene-extract")
             return 1
-        elif args.command == "generate-scene" and not (args.scene_path or args.output_file):
-            print("Error: --scene-path is required for --generate-scene")
-            return 1
         
         # Execute the appropriate command
         if args.command == "visualize":
@@ -1383,8 +1395,6 @@ def main():
             scene_convert_cmd(args)
         elif args.command == "scene-extract":
             scene_extract_cmd(args)
-        elif args.command == "generate-scene":
-            generate_scene_cmd(args)
         elif args.command == "backend":
             backend_cmd(args)
         else:
