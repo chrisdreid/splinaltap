@@ -156,16 +156,32 @@ This design decision ensures:
 
 ### Available Commands
 
+The CLI provides several unified commands that follow a consistent pattern. Here are the main commands:
+
 ```bash
+# Default behavior: sample/evaluate interpolated values (no command needed)
+python splinaltap --input-file input.json --samples 0.25 0.5 0.75 --output-file values.csv
+python splinaltap --input-file input.json --samples 1000 --range 0,1 --output-file evenly_spaced.csv
+
 # Visualize interpolation
 python splinaltap --visualize --input-file input.json --methods cubic --output-file output.png
 
 # Compare multiple interpolation methods (requires --visualize command)
 python splinaltap --visualize --input-file input.json --methods linear cubic hermite bezier --compare --output-file comparison.png
 
-# Default behavior: sample/evaluate interpolated values (no command needed)
-python splinaltap --input-file input.json --samples 0.25 0.5 0.75 --output-file values.csv
-python splinaltap --input-file input.json --samples 1000 --range 0,1 --output-file evenly_spaced.csv
+# Scene management with unified --scene command
+python splinaltap --scene "info scene.json"                         # Show scene info
+python splinaltap --scene "ls scene.json"                           # List interpolators
+python splinaltap --scene "convert input.json output.yaml"          # Convert formats
+python splinaltap --scene "extract scene.json new.json position"    # Extract full interpolator
+python splinaltap --scene "extract scene.json pos_x.json position.x" # Extract specific dimension
+
+# Backend management with unified --backend command
+python splinaltap --backend                 # Show current backend
+python splinaltap --backend ls              # List all backends
+python splinaltap --backend info            # Show detailed info
+python splinaltap --backend numpy           # Set backend to numpy
+python splinaltap --backend best            # Use best available backend
 
 # Define and use keyframes directly on command line (0-1 normalized range)
 python splinaltap --keyframes 0:0@cubic 0.5:10@cubic 1:0@cubic --samples 100 --output-file from_cli.csv
@@ -176,27 +192,29 @@ python splinaltap --keyframes 0:0 0.5:10 1:0 --samples 10 --content-type csv --o
 python splinaltap --keyframes 0:0 0.5:10 1:0 --samples 10 --content-type yaml
 python splinaltap --keyframes 0:0 0.5:10 1:0 --samples 10 --content-type text
 
-# Generate template files to use as starting points
-python splinaltap --generate-template --output-file template.json
-python splinaltap --generate-template --keyframes 0:0 0.5:10 1:0 --output-file my_template.json
-python splinaltap --generate-template --dimensions 3 --output-file vector_template.json
-python splinaltap --generate-template --scene --output-file scene_template.json
-python splinaltap --generate-template --output-file template.yaml --content-type yaml
+# Generate scene files to use as starting points
+python splinaltap --generate-scene template.json
+python splinaltap --generate-scene my_template.json --keyframes 0:0 0.5:10 1:0
+python splinaltap --generate-scene vector_template.json --dimensions 3
+python splinaltap --generate-scene template.yaml --content-type yaml
 
-# Work with existing files to create new templates
-python splinaltap --input-file existing.json --generate-template --output-file modified.json
-python splinaltap --input-file existing.json --generate-template --keyframes 0:0 0.5:5 1:0 --output-file with_new_keyframes.json
-python splinaltap --input-file existing.json --generate-template --scene --output-file as_scene.json
+# Work with existing files to create new scenes
+python splinaltap --input-file existing.json --generate-scene modified.json
+python splinaltap --input-file existing.json --generate-scene with_new_keyframes.json --keyframes 0:0 0.5:5 1:0
 
 # Work with scenes (multiple interpolators)
-python splinaltap --scene-info --input-file scene.json
-python splinaltap --scene-convert --input-file scene.json --output-file scene.yaml
-python splinaltap --scene-extract --input-file scene.json --interpolator-name position_x --output-file extracted.json
+python splinaltap --scene "info path/to/scene.json"
+python splinaltap --scene "ls path/to/scene.json"
+python splinaltap --scene "convert input.json output.yaml"
+python splinaltap --scene "extract input.json output.json position"         # Extract full position interpolator
+python splinaltap --scene "extract input.json position_x.json position.x"   # Extract just the x dimension
 
 # Manage compute backends
-python splinaltap --backend --list
-python splinaltap --backend --use-backend numpy
-python splinaltap --backend --use-best
+python splinaltap --backend                  # Show current backend
+python splinaltap --backend ls               # List available backends
+python splinaltap --backend info             # Show detailed backend info
+python splinaltap --backend numpy            # Switch to NumPy backend
+python splinaltap --backend best             # Use best available backend
 ```
 
 ### Input File Format
@@ -349,8 +367,9 @@ python splinaltap --keyframes 0:0@cubic 0.5:10@bezier{cp=0.6,12,0.7,8} 1:0@cubic
 
 Specialized operations require explicit commands:
 - `--visualize`: For generating plots and visualizations
-- `--scene-info`, `--scene-convert`, `--scene-extract`: For scene operations
-- `--backend`: For managing compute backends
+- `--scene`: Unified command for scene operations with subcommands like `info`, `ls`, `convert`, `extract`
+- `--backend`: Unified command for managing compute backends (no args shows current, `ls` lists all, etc.)
+- `--generate-scene`: For creating scene files at a specified filepath
 
 ### Advanced Sample Syntax
 
@@ -542,18 +561,43 @@ plt.title("Interpolation Methods Comparison")
 plt.show()
 ```
 
-### Understanding Dimensions vs Channels
+### Understanding Interpolators, Dimensions, and Channels
 
-SplinalTap works with two important concepts that provide different types of flexibility:
+SplinalTap works with three core concepts that provide different levels of organization and flexibility:
 
-#### Dimensions: Components of Your Interpolated Values
+#### 1. Interpolators: Independent Animation Curves or Properties
 
-Dimensions represent the different components of the values being interpolated (like x, y, z coordinates). 
-Each dimension has its own set of keyframes but shares the same normalized range.
+Interpolators are top-level entities that represent a complete animation curve or property. In a scene file, 
+these are named entities (like "position", "rotation", "scale") that can be manipulated independently.
 
 ```python
-# Coming soon: Multi-dimensional support for vectors, colors, and more
-# Create a 3D interpolator (x, y, z)
+# A scene can contain multiple independent interpolators
+scene = {
+    "interpolators": {
+        "position": { /* position interpolator data */ },
+        "rotation": { /* rotation interpolator data */ },
+        "scale": { /* scale interpolator data */ }
+    }
+}
+
+# Each interpolator can be extracted and used independently
+position_interpolator = scene.get_interpolator("position")
+rotation_interpolator = scene.get_interpolator("rotation")
+```
+
+When using the `--scene extract` command, you're extracting a named interpolator from a scene file:
+```bash
+# Extract the "position" interpolator including all its dimensions
+python splinaltap --scene "extract scene.json position.json position"
+```
+
+#### 2. Dimensions: Components of an Interpolated Value
+
+Dimensions represent individual components of an interpolator (like x, y, z coordinates for position). 
+Each dimension has its own set of keyframes but shares the same normalized timeline range.
+
+```python
+# Create a 3D interpolator (x, y, z dimensions)
 interpolator = KeyframeInterpolator(dimensions=3)
 
 # Set a keyframe with all three dimensions
@@ -561,14 +605,23 @@ interpolator.set_keyframe(0.0, [0, 0, 0])  # Start at origin
 interpolator.set_keyframe(0.5, [10, 20, 5])  # Mid-point
 interpolator.set_keyframe(1.0, [20, 0, 10])  # End point
 
-# Get the interpolated 3D position at position 0.25
+# Get the interpolated 3D position at t=0.25
 position = interpolator.get_value(0.25)  # Returns something like [5, 10, 2.5]
+
+# Access a specific dimension
+x_value = interpolator.get_dimension_value(0.25, "x")
 ```
 
-#### Channels: Dynamic Parameters for Expressions
+You can extract a specific dimension from an interpolator using the dot notation:
+```bash
+# Extract just the x dimension from the position interpolator
+python splinaltap --scene "extract scene.json position_x.json position.x"
+```
 
-Channels are external parameters that you can pass to influence expressions at evaluation time, 
-without changing the keyframes themselves. Think of them as knobs you can adjust on-the-fly.
+#### 3. Channels: Dynamic Parameters for Expressions
+
+Channels are external parameters that you pass at evaluation time to influence expressions,
+without changing the keyframes themselves. Think of them as runtime inputs or control knobs.
 
 ```python
 # Define keyframes that use channel values
@@ -584,10 +637,29 @@ values_1 = [interpolator.get_value(p, "cubic", channels_1) for p in positions]
 values_2 = [interpolator.get_value(p, "cubic", channels_2) for p in positions]
 ```
 
-**Key Difference**: 
-- Dimensions are the components being interpolated (outputs)
-- Channels are dynamic inputs used at evaluation time
-- Variables are constants defined at creation time
+**Key Differences Summary**: 
+
+- **Interpolators** are complete, named animation curves or properties (position, rotation, etc.)
+- **Dimensions** are components of an interpolator (x, y, z coordinates) with their own keyframes
+- **Channels** are dynamic inputs passed at evaluation time to parameterize expressions
+- **Variables** are constants defined at creation time and baked into the interpolator
+
+**Hierarchy**:
+```
+Scene
+ ├─ Interpolator: "position" (a named animation property)
+ │   ├─ Dimension: "x" (component with its own keyframes)
+ │   ├─ Dimension: "y" (component with its own keyframes)
+ │   └─ Dimension: "z" (component with its own keyframes)
+ │
+ ├─ Interpolator: "rotation" (another animation property)
+ │   ├─ Dimension: "x" (component with its own keyframes)
+ │   ├─ Dimension: "y" (component with its own keyframes)
+ │   └─ Dimension: "z" (component with its own keyframes)
+ │
+ └─ Interpolator: "scale" (a single-dimension property)
+     └─ (single value with keyframes)
+```
 
 ### Using Control Points (Bezier)
 
