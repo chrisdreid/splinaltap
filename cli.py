@@ -359,21 +359,21 @@ def evaluate_cmd(args: argparse.Namespace) -> None:
             name, value = channel_str.split('=')
             channels[name.strip()] = float(value.strip())
     
-    # Parse sample points
-    points = []
+    # Parse samples
+    samples = []
     channel_methods = {}  # Dict mapping channel names to methods
     
     if args.samples:
         # Check if first value is an integer sample count
         try:
             sample_count = int(args.samples[0])
-            # It's a sample count, generate evenly spaced points
+            # It's a sample count, generate evenly spaced samples
             if args.range:
                 x_min, x_max = map(float, args.range.split(','))
             else:
                 x_min, x_max = interpolator.get_time_range()
                 
-            points = [x_min + i * (x_max - x_min) / (sample_count - 1) for i in range(sample_count)]
+            samples = [x_min + i * (x_max - x_min) / (sample_count - 1) for i in range(sample_count)]
             
             # Process any channel:method specs for the entire range
             if len(args.samples) > 1:
@@ -392,7 +392,7 @@ def evaluate_cmd(args: argparse.Namespace) -> None:
                 if '@' in spec:
                     # Parse sample with channel:method specs
                     sample_value, specs = parse_sample_spec(spec)
-                    points.append(sample_value)
+                    samples.append(sample_value)
                     
                     # For evaluate, just take the first method for each channel
                     for channel, methods in specs.items():
@@ -402,20 +402,20 @@ def evaluate_cmd(args: argparse.Namespace) -> None:
                             channel_methods[channel] = args.methods[0]
                 else:
                     # Just a plain sample value
-                    points.append(float(spec))
+                    samples.append(float(spec))
     else:
-        # Default if no samples specified: single point at 0.0
-        points = [0.0]
+        # Default if no samples specified: single sample at 0.0
+        samples = [0.0]
     
     # Determine which method to use - if channel specified, use that one
     method = args.methods[0]  # Default to first method
     if channel_methods and "default" in channel_methods:
         method = channel_methods["default"]
     
-    # Evaluate at all points
+    # Evaluate at all samples
     values = []
-    for point in points:
-        values.append(interpolator.get_value(point, method, channels))
+    for sample in samples:
+        values.append(interpolator.get_value(sample, method, channels))
     
     # Convert to a format compatible with format_output
     results = {
@@ -442,7 +442,7 @@ def evaluate_cmd(args: argparse.Namespace) -> None:
             # Special case for numpy
             if HAS_NUMPY:
                 # Save to numpy format
-                data = np.column_stack([points, values])
+                data = np.column_stack([samples, values])
                 np.save(args.output_file, data)
                 print(f"Saved results to {args.output_file} in NumPy format")
                 return
@@ -451,13 +451,13 @@ def evaluate_cmd(args: argparse.Namespace) -> None:
     if not content_type:
         content_type = 'json'
     
-    # If only a single point was evaluated and plain text output is requested, simplify
-    if len(points) == 1 and content_type == 'text' and not args.output_file:
+    # If only a single sample was evaluated and plain text output is requested, simplify
+    if len(samples) == 1 and content_type == 'text' and not args.output_file:
         print(values[0])
         return
     
     # Format and output the results
-    format_output({}, points, results, content_type, args.output_file)
+    format_output({}, samples, results, content_type, args.output_file)
 
 
 def parse_sample_spec(sample_spec: str) -> Tuple[float, Dict[str, List[str]]]:
@@ -488,12 +488,12 @@ def parse_sample_spec(sample_spec: str) -> Tuple[float, Dict[str, List[str]]]:
             
     return (sample_value, channel_methods)
     
-def format_output(data: Dict, points: List[float], results: Dict, content_type: str = "json", output_file: Optional[str] = None) -> None:
+def format_output(data: Dict, samples: List[float], results: Dict, content_type: str = "json", output_file: Optional[str] = None) -> None:
     """Format and output the results based on the specified content type.
     
     Args:
         data: The data to output
-        points: The sample points
+        samples: The samples to output
         results: The results dictionary
         content_type: The content type/format (json, csv, text, yaml)
         output_file: Optional output file path
@@ -502,7 +502,7 @@ def format_output(data: Dict, points: List[float], results: Dict, content_type: 
     
     if content_type == "json":
         # Format as JSON
-        output = {"points": points, "results": {}}
+        output = {"samples": samples, "results": {}}
         
         for channel, method_values in results.items():
             output["results"][channel] = {}
@@ -520,15 +520,15 @@ def format_output(data: Dict, points: List[float], results: Dict, content_type: 
         csv_writer = csv.writer(csv_buffer)
         
         # Write header
-        header = ["point"]
+        header = ["sample"]
         for channel, method_values in results.items():
             for method in method_values.keys():
                 header.append(f"{channel}_{method}")
         csv_writer.writerow(header)
         
         # Write data rows
-        for i, point in enumerate(points):
-            row = [point]
+        for i, sample in enumerate(samples):
+            row = [sample]
             for channel, method_values in results.items():
                 for method, values in method_values.items():
                     # Convert to list to ensure safe access
@@ -540,7 +540,7 @@ def format_output(data: Dict, points: List[float], results: Dict, content_type: 
         
     elif content_type == "yaml":
         # Format as YAML
-        output = {"points": points, "results": {}}
+        output = {"samples": samples, "results": {}}
         
         for channel, method_values in results.items():
             output["results"][channel] = {}
@@ -554,8 +554,8 @@ def format_output(data: Dict, points: List[float], results: Dict, content_type: 
     else:  # Default to "text"
         # Format as plain text
         lines = []
-        for i, point in enumerate(points):
-            line = f"{point}"
+        for i, sample in enumerate(samples):
+            line = f"{sample}"
             for channel, method_values in results.items():
                 for method, values in method_values.items():
                     # Convert to list to ensure safe access
@@ -584,8 +584,8 @@ def sample_cmd(args: argparse.Namespace) -> None:
             name, value = channel_str.split('=')
             channels[name.strip()] = float(value.strip())
     
-    # Parse sample points
-    points = []
+    # Parse samples
+    samples = []
     all_methods = set()
     channel_methods = {}  # Dict mapping channel names to methods
     
@@ -593,13 +593,13 @@ def sample_cmd(args: argparse.Namespace) -> None:
         # Check if first value is an integer sample count
         try:
             sample_count = int(args.samples[0])
-            # It's a sample count, generate evenly spaced points
+            # It's a sample count, generate evenly spaced samples
             if args.range:
                 x_min, x_max = map(float, args.range.split(','))
             else:
                 x_min, x_max = interpolator.get_time_range()
                 
-            points = [x_min + i * (x_max - x_min) / (sample_count - 1) for i in range(sample_count)]
+            samples = [x_min + i * (x_max - x_min) / (sample_count - 1) for i in range(sample_count)]
             
             # Process any channel:method specs for the entire range
             if len(args.samples) > 1:
@@ -619,7 +619,7 @@ def sample_cmd(args: argparse.Namespace) -> None:
                 if '@' in spec:
                     # Parse sample with channel:method specs
                     sample_value, specs = parse_sample_spec(spec)
-                    points.append(sample_value)
+                    samples.append(sample_value)
                     
                     # Update channel methods
                     for channel, methods in specs.items():
@@ -629,7 +629,7 @@ def sample_cmd(args: argparse.Namespace) -> None:
                         all_methods.update(methods)
                 else:
                     # Just a plain sample value
-                    points.append(float(spec))
+                    samples.append(float(spec))
     else:
         # Default if no samples specified: 100 evenly spaced
         sample_count = 100
@@ -638,43 +638,43 @@ def sample_cmd(args: argparse.Namespace) -> None:
         else:
             x_min, x_max = interpolator.get_time_range()
             
-        points = [x_min + i * (x_max - x_min) / (sample_count - 1) for i in range(sample_count)]
+        samples = [x_min + i * (x_max - x_min) / (sample_count - 1) for i in range(sample_count)]
     
     # If no specific methods were parsed from sample specs, use the methods list
     if not all_methods:
         all_methods = set(args.methods)
     
-    # Evaluate for each point, method, and channel combination
+    # Evaluate for each sample position, method, and channel combination
     results = {}
     
     # If no channel methods specified, use all methods for the default channel
-    if not channel_methods and points:
+    if not channel_methods and samples:
         # Base case: just normal sampling with methods
         values_by_method = {}
         
-        # For each method, sample all points
+        # For each method, evaluate at all samples
         for method in all_methods:
-            if len(points) >= 10 and args.use_gpu:
-                # For many points, use optimized sampling
+            if len(samples) >= 10 and args.use_gpu:
+                # For many samples, use optimized sampling
                 try:
                     # Need to determine range and count
-                    x_min, x_max = min(points), max(points)
-                    if len(set(points)) == len(points) and len(points) > 1:
+                    x_min, x_max = min(samples), max(samples)
+                    if len(set(samples)) == len(samples) and len(samples) > 1:
                         # Check if evenly spaced
-                        diffs = [points[i+1] - points[i] for i in range(len(points)-1)]
+                        diffs = [samples[i+1] - samples[i] for i in range(len(samples)-1)]
                         if max(diffs) - min(diffs) < 1e-10:  # Approximately equal spacing
-                            # Use GPU for evenly spaced points
-                            values = interpolator.sample_with_gpu(x_min, x_max, len(points), method, channels)
+                            # Use GPU for evenly spaced samples
+                            values = interpolator.sample_with_gpu(x_min, x_max, len(samples), method, channels)
                             values_by_method[method] = values
                             print(f"Using GPU acceleration for method: {method}")
                             continue
                 except Exception as e:
                     print(f"GPU acceleration failed: {e}, falling back to CPU")
             
-            # Standard point-by-point evaluation
+            # Standard sample-by-sample evaluation
             values = []
-            for point in points:
-                values.append(interpolator.get_value(point, method, channels))
+            for sample in samples:
+                values.append(interpolator.get_value(sample, method, channels))
             values_by_method[method] = values
         
         results["default"] = values_by_method
@@ -684,12 +684,12 @@ def sample_cmd(args: argparse.Namespace) -> None:
             channel_channels = channels.copy()
             values_by_method = {}
             
-            # For each method, sample all points
+            # For each method, evaluate at all samples
             actual_methods = methods if methods else list(all_methods)
             for method in actual_methods:
                 values = []
-                for point in points:
-                    values.append(interpolator.get_value(point, method, channel_channels))
+                for sample in samples:
+                    values.append(interpolator.get_value(sample, method, channel_channels))
                 values_by_method[method] = values
             
             results[channel] = values_by_method
@@ -711,8 +711,8 @@ def sample_cmd(args: argparse.Namespace) -> None:
         elif ext == '.npy' and HAS_NUMPY:
             # Special case for numpy
             # Flatten results into columns
-            columns = [points]
-            column_names = ['point']
+            columns = [samples]
+            column_names = ['sample']
             
             for channel, method_values in results.items():
                 for method, values in method_values.items():
@@ -732,7 +732,7 @@ def sample_cmd(args: argparse.Namespace) -> None:
         content_type = 'json'
     
     # Format and output the results
-    format_output({}, points, results, content_type, args.output_file)
+    format_output({}, samples, results, content_type, args.output_file)
 
 
 def scene_info_cmd(args: argparse.Namespace) -> None:
@@ -800,15 +800,28 @@ def scene_extract_cmd(args: argparse.Namespace) -> None:
     
 def generate_template_cmd(args: argparse.Namespace) -> None:
     """Handle the generate-template command."""
-    # Create a template JSON file with keyframes and optional args
-    template = {
-        "range": [0.0, 1.0],
-        "variables": {
-            "amplitude": 2.5,
-            "frequency": 0.5
-        },
-        "keyframes": []
-    }
+    # Initialize template structure
+    template = None
+    
+    # If an input file was provided, use it as the base
+    if args.input_file:
+        try:
+            with open(args.input_file, 'r') as f:
+                template = json.load(f)
+                print(f"Loaded template base from {args.input_file}")
+        except Exception as e:
+            print(f"Warning: Could not load input file: {e}")
+            
+    # If no template loaded from file, create a new one
+    if template is None:
+        template = {
+            "range": [0.0, 1.0],
+            "variables": {
+                "amplitude": 2.5,
+                "frequency": 0.5
+            },
+            "keyframes": []
+        }
     
     # If keyframes were specified, add them to the template
     if args.keyframes:
@@ -817,16 +830,21 @@ def generate_template_cmd(args: argparse.Namespace) -> None:
             interpolator = create_keyframe_interpolator_from_args(args)
             
             # Extract keyframes and add them to the template
+            keyframes_list = []
             for position, (value, derivative, control_points) in sorted(interpolator.keyframes.items()):
-                # Evaluate the raw value if it's an expression
+                # For expressions, store the original expression if possible or evaluate
                 if callable(value):
+                    # Try to get original expression string from interpolator
                     try:
-                        value = value(position, position, {})
+                        if hasattr(interpolator, '_expressions') and position in interpolator._expressions:
+                            value = interpolator._expressions[position]
+                        else:
+                            value = value(position, position, {})
                     except:
                         value = f"Expression at position {position}"
                 
                 kf = {
-                    "position": position,
+                    "index": position,
                     "value": value
                 }
                 
@@ -836,28 +854,43 @@ def generate_template_cmd(args: argparse.Namespace) -> None:
                 if control_points is not None:
                     kf["control_points"] = list(control_points)
                     
-                template["keyframes"].append(kf)
+                keyframes_list.append(kf)
+            
+            # Update template with keyframes - handle both direct keyframes and dimensions
+            if "dimensions" in template:
+                # Multi-dimensional template - add to first dimension if possible
+                dims = list(template["dimensions"].keys())
+                if dims:
+                    template["dimensions"][dims[0]]["keyframes"] = keyframes_list
+            else:
+                # Single-dimensional template
+                template["keyframes"] = keyframes_list
+                
         except Exception as e:
             print(f"Warning: Could not process keyframes: {e}")
-            # Add some example keyframes
-            template["keyframes"] = [
-                {"position": 0.0, "value": 0},
-                {"position": 0.5, "value": "sin(t * frequency) * amplitude"},
-                {"position": 1.0, "value": 10}
-            ]
-    else:
-        # Add example keyframes
+            # Add default keyframes if none exist yet
+            if not template.get("keyframes") and "dimensions" not in template:
+                template["keyframes"] = [
+                    {"index": 0.0, "value": 0},
+                    {"index": 0.5, "value": "sin(t * frequency) * amplitude"},
+                    {"index": 1.0, "value": 10}
+                ]
+    elif not args.input_file:
+        # No input file and no keyframes, use default keyframes
         template["keyframes"] = [
-            {"position": 0.0, "value": 0},
-            {"position": 0.5, "value": "sin(t * frequency) * amplitude"},
-            {"position": 1.0, "value": 10}
+            {"index": 0.0, "value": 0},
+            {"index": 0.5, "value": "sin(t * frequency) * amplitude"},
+            {"index": 1.0, "value": 10}
         ]
     
     # If dimensions are specified, create multi-dimensional template
-    if args.dimensions and args.dimensions > 1:
+    if args.dimensions and args.dimensions > 1 and "dimensions" not in template:
+        # Convert to multi-dimensional if it isn't already
+        keyframes = template.get("keyframes", [])
+        
         multi_template = {
-            "range": template["range"],
-            "variables": template["variables"],
+            "range": template.get("range", [0.0, 1.0]),
+            "variables": template.get("variables", {}),
             "dimensions": {}
         }
         
@@ -866,13 +899,13 @@ def generate_template_cmd(args: argparse.Namespace) -> None:
         for i, name in enumerate(dim_names[:args.dimensions]):
             # Vary the example keyframes slightly for each dimension
             if i == 0:
-                kf_values = template["keyframes"]
+                kf_values = keyframes
             else:
                 # Create varied keyframes for other dimensions
                 kf_values = []
-                for kf in template["keyframes"]:
+                for kf in keyframes:
                     new_kf = kf.copy()
-                    if isinstance(new_kf["value"], (int, float)):
+                    if isinstance(new_kf.get("value"), (int, float)):
                         new_kf["value"] = new_kf["value"] + i * 5  # Offset by 5 * dimension index
                     kf_values.append(new_kf)
             
@@ -883,7 +916,7 @@ def generate_template_cmd(args: argparse.Namespace) -> None:
         template = multi_template
     
     # Add scene wrapper if requested
-    if args.scene:
+    if args.scene and "interpolators" not in template:
         scene_template = {
             "name": "MyAnimation",
             "metadata": {
@@ -899,16 +932,22 @@ def generate_template_cmd(args: argparse.Namespace) -> None:
         template = scene_template
     
     # Save the template to the output file
-    content_type = args.content_type or "json"
+    content_type = args.content_type
     
     if not args.output_file:
         print("Error: --output-file is required for --generate-template")
         return 1
     
+    # If no content type specified, determine from output file extension
+    if not content_type and args.output_file:
+        ext = os.path.splitext(args.output_file)[1].lower()
+        if ext == '.yaml' or ext == '.yml':
+            content_type = 'yaml'
+        else:
+            content_type = 'json'
+    
     with open(args.output_file, 'w') as f:
-        if content_type == "json":
-            json.dump(template, f, indent=2)
-        elif content_type == "yaml":
+        if content_type == "yaml":
             yaml.dump(template, f, sort_keys=False)
         else:
             # Default to JSON
@@ -969,7 +1008,7 @@ def create_parser() -> argparse.ArgumentParser:
     """Create the command-line argument parser."""
     parser = argparse.ArgumentParser(
         description="Splinaltap - Keyframe interpolation and expression evaluation that goes to eleven!",
-        epilog="For more information, visit: https://github.com/yourusername/splinaltap"
+        epilog="For more information, visit: https://github.com/chrisdreid/splinaltap"
     )
     
     # We'll use the standard --help option, no need for additional help flags
@@ -1006,7 +1045,7 @@ def create_parser() -> argparse.ArgumentParser:
     parser.add_argument("--output-file", help="Output file (for visualization, sample, or conversion)")
     # Samples parameter with advanced syntax support
     parser.add_argument("--samples", nargs="+", 
-                      help="Sample points with optional channel and method specifications. Format: VALUE[@CHANNEL:METHOD][@CHANNEL:METHOD...] or sample count (integer)")
+                      help="Samples with optional channel and method specifications. Format: VALUE[@CHANNEL:METHOD][@CHANNEL:METHOD...] or sample count (integer)")
     parser.add_argument("--methods", nargs="+", default=["cubic"],
                       help="List of methods to use or compare (space-separated)")
     parser.add_argument("--range", help="X-value range as min,max (e.g. 0,1) when using integer sample count")

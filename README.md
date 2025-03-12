@@ -183,6 +183,11 @@ python splinaltap --generate-template --dimensions 3 --output-file vector_templa
 python splinaltap --generate-template --scene --output-file scene_template.json
 python splinaltap --generate-template --output-file template.yaml --content-type yaml
 
+# Work with existing files to create new templates
+python splinaltap --input-file existing.json --generate-template --output-file modified.json
+python splinaltap --input-file existing.json --generate-template --keyframes 0:0 0.5:5 1:0 --output-file with_new_keyframes.json
+python splinaltap --input-file existing.json --generate-template --scene --output-file as_scene.json
+
 # Work with scenes (multiple interpolators)
 python splinaltap --scene-info --input-file scene.json
 python splinaltap --scene-convert --input-file scene.json --output-file scene.yaml
@@ -204,24 +209,24 @@ The simplest format represents a single interpolator:
 
 ```json
 {
-  "range": [0.0, 1.0],          // Optional: Range as [min, max] (default is normalized 0-1)
-  "variables": {                // Optional: Constants used in expressions
+  "range": [0.0, 1.0],
+  "variables": {
     "amplitude": 2.5,
     "frequency": 0.5
   },
-  "keyframes": [                // Required: Array of keyframes
+  "keyframes": [
     {
-      "position": 0.0,          // Position (normalized 0-1 by default)
-      "value": 0                // Value or expression (number or string)
+      "index": 0.0,
+      "value": 0
     },
     {
-      "position": 0.5,
+      "index": 0.5,
       "value": "sin(t * frequency) * amplitude",
-      "derivative": 0.5,        // Optional: Derivative for Hermite interpolation
-      "control_points": [0.6, 12, 0.7, 8]  // Optional: Control points for Bezier
+      "derivative": 0.5,
+      "control_points": [0.6, 12, 0.7, 8]
     },
     {
-      "position": 1.0,
+      "index": 1.0,
       "value": 10
     }
   ]
@@ -234,34 +239,34 @@ Multi-dimensional data (like positions, colors, etc.) can be organized in a sing
 
 ```json
 {
-  "range": [0.0, 1.0],          // Global range (applies to all dimensions unless overridden)
-  "variables": {                // Global variables (accessible to all dimensions)
+  "range": [0.0, 1.0],
+  "variables": {
     "amplitude": 2.5,
     "frequency": 0.5
   },
-  "dimensions": {               // Contains all dimensions
-    "x": {                      // First dimension (x coordinate)
-      "range": [0.0, 1.0],      // Optional: Override global range for this dimension
+  "dimensions": {
+    "x": {
+      "range": [0.0, 1.0],
       "keyframes": [
-        { "position": 0.0, "value": 0 },
-        { "position": 0.5, "value": "sin(t * frequency) * amplitude" },
-        { "position": 1.0, "value": 10 }
+        { "index": 0.0, "value": 0 },
+        { "index": 0.5, "value": "sin(t * frequency) * amplitude" },
+        { "index": 1.0, "value": 10 }
       ]
     },
-    "y": {                      // Second dimension (y coordinate)
-      "keyframes": [            // Uses global range since not overridden
-        { "position": 0.0, "value": 5 },
-        { "position": 0.5, "value": 15 },
-        { "position": 1.0, "value": 5 }
+    "y": {
+      "keyframes": [
+        { "index": 0.0, "value": 5 },
+        { "index": 0.5, "value": 15 },
+        { "index": 1.0, "value": 5 }
       ],
-      "variables": {            // Dimension-specific variables (override globals)
+      "variables": {
         "amplitude": 5.0
       }
     },
-    "z": {                      // Third dimension (z coordinate)
+    "z": {
       "keyframes": [
-        { "position": 0.0, "value": 0 },
-        { "position": 1.0, "value": 0 }
+        { "index": 0.0, "value": 0 },
+        { "index": 1.0, "value": 0 }
       ]
     }
   }
@@ -426,56 +431,56 @@ A Scene is a collection of multiple named interpolators, which can be useful for
     "author": "SplinalTap User",
     "created": "2023-09-15"
   },
-  "variables": {                 // Global variables shared by all interpolators
+  "variables": {
     "pi": 3.14159,
     "amplitude": 10
   },
   "interpolators": {
-    "position": {                // A multi-dimensional interpolator for position
-      "range": [0.0, 1.0],       // Global range for this interpolator
+    "position": {
+      "range": [0.0, 1.0],
       "dimensions": {
         "x": {
           "keyframes": [
-            {"position": 0.0, "value": 0},
-            {"position": 0.5, "value": 10},
-            {"position": 1.0, "value": 0}
+            {"index": 0.0, "value": 0},
+            {"index": 0.5, "value": 10},
+            {"index": 1.0, "value": 0}
           ]
         },
         "y": {
           "keyframes": [
-            {"position": 0.0, "value": 0},
-            {"position": 0.5, "value": "sin(t*pi)"},
-            {"position": 1.0, "value": 0}
+            {"index": 0.0, "value": 0},
+            {"index": 0.5, "value": "sin(t*pi)"},
+            {"index": 1.0, "value": 0}
           ]
         },
         "z": {
           "keyframes": [
-            {"position": 0.0, "value": 0},
-            {"position": 1.0, "value": 5}
+            {"index": 0.0, "value": 0},
+            {"index": 1.0, "value": 5}
           ]
         }
       }
     },
-    "rotation": {               // Single-dimension interpolator for rotation
+    "rotation": {
       "range": [0.0, 1.0],
       "keyframes": [
-        {"position": 0.0, "value": 0},
-        {"position": 1.0, "value": 360}
+        {"index": 0.0, "value": 0},
+        {"index": 1.0, "value": 360}
       ]
     },
-    "scale": {                  // Another multi-dimensional interpolator
+    "scale": {
       "dimensions": {
         "x": {
           "keyframes": [
-            {"position": 0.0, "value": 1},
-            {"position": 0.5, "value": "amplitude * 0.1"},
-            {"position": 1.0, "value": 1}
+            {"index": 0.0, "value": 1},
+            {"index": 0.5, "value": "amplitude * 0.1"},
+            {"index": 1.0, "value": 1}
           ]
         },
         "y": {
           "keyframes": [
-            {"position": 0.0, "value": 1},
-            {"position": 1.0, "value": 1}
+            {"index": 0.0, "value": 1},
+            {"index": 1.0, "value": 1}
           ]
         }
       }
