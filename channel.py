@@ -106,8 +106,19 @@ class Channel:
         elif isinstance(value, (int, float)):
             # For constant values, create a simple callable
             value_callable = lambda t, channels={}: float(value)
+        elif callable(value):
+            # If a callable is already provided, use it directly
+            value_callable = value
         else:
-            raise TypeError(f"Keyframe value must be a number or string expression, got {type(value).__name__}")
+            # Try to convert to a string and parse
+            try:
+                str_value = str(value)
+                if self._expression_evaluator is None:
+                    from .expression import ExpressionEvaluator
+                    self._expression_evaluator = ExpressionEvaluator(self.variables)
+                value_callable = self._expression_evaluator.parse_expression(str_value)
+            except Exception as e:
+                raise TypeError(f"Keyframe value must be a number, string expression, or callable, got {type(value).__name__}: {e}")
         
         # Create and add the keyframe
         keyframe = Keyframe(at, value_callable, interpolation, control_points, derivative)

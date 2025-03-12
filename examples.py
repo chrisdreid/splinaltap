@@ -2,7 +2,7 @@
 Example usage of the splinaltap library.
 """
 
-from .solver import Solver
+from .solver import KeyframeSolver
 from .spline import Spline
 from .channel import Channel, Keyframe
 from .expression import ExpressionEvaluator
@@ -28,7 +28,7 @@ except ImportError:
 def basic_interpolation_example():
     """Create a basic interpolation example with visualization."""
     # Create a solver with a spline and channel
-    solver = Solver(name="Basic Example")
+    solver = KeyframeSolver(name="Basic Example")
     spline = solver.create_spline("main")
     channel = spline.add_channel("value", interpolation="cubic")
     
@@ -46,9 +46,9 @@ def basic_interpolation_example():
     for method in ["linear", "cubic", "bezier", "ease_in_out"]:
         temp_channel = Channel(interpolation=method)
         for kf in channel.keyframes:
-            temp_channel.add_keyframe(kf.position, kf.value, kf.parameters)
+            temp_channel.add_keyframe(kf.at, kf.value, control_points=kf.control_points, derivative=kf.derivative)
         
-        values[method] = [temp_channel.evaluate(pos) for pos in samples]
+        values[method] = [temp_channel.get_value(pos) for pos in samples]
     
     # Visualize using matplotlib directly
     plt.figure(figsize=(10, 6))
@@ -67,7 +67,7 @@ def basic_interpolation_example():
 def external_channels_example():
     """Example showing how to use external channels."""
     # Create a solver with a spline and channel
-    solver = Solver(name="External Channels Example")
+    solver = KeyframeSolver(name="External Channels Example")
     spline = solver.create_spline("main")
     
     # Create a channel with expressions referencing external channels
@@ -85,8 +85,8 @@ def external_channels_example():
     ext_channels_2 = {"a": 2.0, "b": 0.0, "c": 3.0}
     
     # Evaluate with each set
-    values_1 = [channel.evaluate(pos, ext_channels_1) for pos in samples]
-    values_2 = [channel.evaluate(pos, ext_channels_2) for pos in samples]
+    values_1 = [channel.get_value(pos, ext_channels_1) for pos in samples]
+    values_2 = [channel.get_value(pos, ext_channels_2) for pos in samples]
     
     # Plot results
     plt.figure(figsize=(10, 6))
@@ -94,8 +94,8 @@ def external_channels_example():
     plt.plot(samples, values_2, label="External Channels Set 2")
     
     # Plot keyframes
-    keyframe_pos = [kf.position for kf in channel.keyframes]
-    keyframe_vals = [channel.evaluate(pos, ext_channels_1) for pos in keyframe_pos]
+    keyframe_pos = [kf.at for kf in channel.keyframes]
+    keyframe_vals = [channel.get_value(pos, ext_channels_1) for pos in keyframe_pos]
     plt.scatter(keyframe_pos, keyframe_vals, color='black', s=100,
                 facecolors='none', edgecolors='black', label='Keyframes (Set 1)')
     
@@ -111,7 +111,7 @@ def external_channels_example():
 def bezier_control_points_example():
     """Example showing how to use Bezier control points."""
     # Create a solver with a spline and channel
-    solver = Solver(name="Bezier Example")
+    solver = KeyframeSolver(name="Bezier Example")
     spline = solver.create_spline("main")
     channel = spline.add_channel("value", interpolation="bezier")
     
@@ -123,14 +123,14 @@ def bezier_control_points_example():
     
     # Evaluate and plot
     samples = [i/100 for i in range(101)]
-    values = [channel.evaluate(pos) for pos in samples]
+    values = [channel.get_value(pos) for pos in samples]
     
     plt.figure(figsize=(10, 6))
     plt.plot(samples, values)
     
     # Plot keyframes
-    keyframe_pos = [kf.position for kf in channel.keyframes]
-    keyframe_vals = [kf.evaluate(kf.position) for kf in channel.keyframes]
+    keyframe_pos = [kf.at for kf in channel.keyframes]
+    keyframe_vals = [channel.get_value(kf.at) for kf in channel.keyframes]
     plt.scatter(keyframe_pos, keyframe_vals, color='red', s=100)
     
     plt.title("Bezier Interpolation with Control Points")
@@ -144,7 +144,7 @@ def bezier_control_points_example():
 def multidimensional_example():
     """Example showing how to use multiple channels in a spline."""
     # Create a solver with a position spline (x, y, z channels)
-    solver = Solver(name="Multidimensional Example")
+    solver = KeyframeSolver(name="Multidimensional Example")
     position = solver.create_spline("position")
     
     # Add x, y, z channels
@@ -169,22 +169,22 @@ def multidimensional_example():
     
     # Sample all channels
     samples = [i/100 for i in range(101)]
-    x_values = [x_channel.evaluate(pos) for pos in samples]
-    y_values = [y_channel.evaluate(pos) for pos in samples]
-    z_values = [z_channel.evaluate(pos) for pos in samples]
+    x_values = [x_channel.get_value(pos) for pos in samples]
+    y_values = [y_channel.get_value(pos) for pos in samples]
+    z_values = [z_channel.get_value(pos) for pos in samples]
     
     # 3D plot
     ax = plt.figure(figsize=(10, 8)).add_subplot(projection='3d')
     ax.plot(x_values, y_values, z_values, label="3D Path")
     
     # Plot keyframe points for clarity
-    keyframe_pos = sorted(set([kf.position for kf in x_channel.keyframes] + 
-                           [kf.position for kf in y_channel.keyframes] + 
-                           [kf.position for kf in z_channel.keyframes]))
+    keyframe_pos = sorted(set([kf.at for kf in x_channel.keyframes] + 
+                           [kf.at for kf in y_channel.keyframes] + 
+                           [kf.at for kf in z_channel.keyframes]))
     
-    keyframe_x = [x_channel.evaluate(pos) for pos in keyframe_pos]
-    keyframe_y = [y_channel.evaluate(pos) for pos in keyframe_pos]
-    keyframe_z = [z_channel.evaluate(pos) for pos in keyframe_pos]
+    keyframe_x = [x_channel.get_value(pos) for pos in keyframe_pos]
+    keyframe_y = [y_channel.get_value(pos) for pos in keyframe_pos]
+    keyframe_z = [z_channel.get_value(pos) for pos in keyframe_pos]
     
     ax.scatter(keyframe_x, keyframe_y, keyframe_z, color='red', s=100, label="Keyframes")
     
@@ -201,7 +201,7 @@ def multidimensional_example():
 def solver_serialization_example():
     """Example showing how to serialize and deserialize a solver."""
     # Create a solver with multiple splines
-    solver = Solver(name="Animation")
+    solver = KeyframeSolver(name="Animation")
     solver.set_metadata("description", "An example animation")
     solver.set_metadata("author", "SplinalTap")
     
@@ -241,7 +241,7 @@ def solver_serialization_example():
     # Load back the JSON version
     if saved_files:
         json_file = os.path.join(temp_dir, "animation.json")
-        loaded_solver = Solver.load(json_file)
+        loaded_solver = KeyframeSolver.load(json_file)
         print(f"Loaded solver: {loaded_solver.name}")
         print(f"Metadata: {loaded_solver.metadata}")
         print(f"Spline names: {loaded_solver.get_spline_names()}")
@@ -250,7 +250,7 @@ def solver_serialization_example():
         pos = 0.5
         for spline_name in loaded_solver.get_spline_names():
             spline = loaded_solver.get_spline(spline_name)
-            values = {name: spline.get_channel(name).evaluate(pos) for name in spline.get_channel_names()}
+            values = {name: spline.get_channel(name).get_value(pos) for name in spline.get_channel_names()}
             print(f"{spline_name} at pos={pos}: {values}")
     
     return solver
@@ -258,7 +258,7 @@ def solver_serialization_example():
 def backends_example():
     """Example demonstrating different compute backends."""
     # Create a solver with a spline and channel
-    solver = Solver(name="Backend Example")
+    solver = KeyframeSolver(name="Backend Example")
     spline = solver.create_spline("main")
     channel = spline.add_channel("value", interpolation="cubic")
     
@@ -290,7 +290,7 @@ def backends_example():
         
         # Time the sampling
         start_time = time.time()
-        result = [channel.evaluate(pos) for pos in samples]
+        result = [channel.get_value(pos) for pos in samples]
         end_time = time.time()
         
         # Report performance

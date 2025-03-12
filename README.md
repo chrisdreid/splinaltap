@@ -2,6 +2,78 @@
 
 *Keyframe interpolation and expression evaluation that goes to eleven!*
 
+## Basic Usage
+
+```python
+from splinaltap import KeyframeSolver, Spline, Channel
+
+# Create a keyframe solver
+solver = KeyframeSolver(name="Animation")
+
+# Create a spline and channel
+spline = solver.create_spline("main")
+channel = spline.add_channel("value", interpolation="cubic")
+
+# Set keyframes with expressions
+channel.add_keyframe(at=0.0, value=0)             # Start at 0
+channel.add_keyframe(at=0.5, value="sin(@ * pi) * 10")  # Use expression with @ variable
+channel.add_keyframe(at=1.0, value=0)             # End at 0
+
+# Evaluate at any point
+value = channel.get_value(0.25)                  # ≈ 7.07 (using cubic interpolation)
+
+# Evaluate across splines
+result = solver.solve(0.5)                       # Get all channel values at position 0.5
+```
+
+## Advanced Usage
+
+```python
+from splinaltap import KeyframeSolver
+
+# Create a keyframe solver
+solver = KeyframeSolver(name="3D Animation")
+
+# Set variables for use in expressions
+solver.set_variable("amplitude", 10)
+solver.set_variable("frequency", 2)
+solver.set_variable("pi", 3.14159)
+
+# Create position spline with multiple channels
+position = solver.create_spline("position")
+x_channel = position.add_channel("x", interpolation="linear")
+y_channel = position.add_channel("y", interpolation="cubic")
+z_channel = position.add_channel("z", interpolation="bezier")
+
+# Add keyframes to each channel
+x_channel.add_keyframe(at=0.0, value=0)
+x_channel.add_keyframe(at=1.0, value="10 * @")
+
+y_channel.add_keyframe(at=0.0, value=0)
+y_channel.add_keyframe(at=0.5, value="amplitude * sin(@ * frequency * pi)")
+y_channel.add_keyframe(at=1.0, value=0)
+
+z_channel.add_keyframe(at=0.0, value=0, control_points=[0.1, 2, 0.3, 5])
+z_channel.add_keyframe(at=1.0, value=0, control_points=[0.7, 5, 0.9, 2])
+
+# Create rotation spline
+rotation = solver.create_spline("rotation")
+angle = rotation.add_channel("angle")
+angle.add_keyframe(at=0.0, value=0)
+angle.add_keyframe(at=1.0, value=360)
+
+# Save to file
+solver.save("animation.json")
+
+# Load from file
+loaded = KeyframeSolver.load("animation.json")
+
+# Evaluate at multiple positions
+for t in [0, 0.25, 0.5, 0.75, 1.0]:
+    result = loaded.solve(t)
+    print(f"At {t}: {result}")
+```
+
 ## About splinaltap
 
 splinaltap is a Python library that provides powerful tools for working with keyframes, expressions, and spline interpolation. It allows you to define keyframes with mathematical expressions, evaluate them at any point along a timeline, and interpolate between them using various methods.
@@ -28,6 +100,26 @@ The name "splinaltap" is a playful nod to the mockumentary "This Is Spinal Tap" 
   - PCHIP (Piecewise Cubic Hermite Interpolating Polynomial)
   - Gaussian Process Interpolation (requires NumPy)
 - 🧮 **Variable Support**: Define and use variables in your expressions for complex animations and simulations
+- 🖥️ **Command Line Interface**: Access all features from the command line
+
+## Command Line Interface
+
+```bash
+# Sample at specific points
+splinaltap --keyframes "0:0@cubic" "0.5:10@cubic" "1:0@cubic" --samples 0.25 0.5 0.75
+
+# Create a visualization
+splinaltap --visualize --keyframes "0:0@cubic" "0.5:sin(@*pi)@cubic" "1:0@cubic" --samples 100
+
+# Use channel-specific methods
+splinaltap --keyframes "0:0@linear" "1:10@linear" --samples 0.5@position:linear@rotation:hermite
+
+# Use expressions with variables
+splinaltap --keyframes "0:0@cubic" "0.5:amplitude*sin(@*pi)@cubic" "1:0@cubic" --variables "amplitude=10" --samples 100 
+
+# Save and load from files
+splinaltap --input-file animation.json --samples 100 --output-file output.csv
+```
 - 🎛️ **Channel Support**: Pass in dynamic channel values that can be used in expressions at runtime
 - 🔢 **Multi-dimensional Support** *(coming soon)*: Interpolate vectors, colors, and other multi-component values
 - 📊 **Visualization**: Built-in support for visualizing interpolation results
@@ -234,27 +326,34 @@ The simplest format represents a single interpolator:
 ```json
 {
   "version": "1.0",
+  "name": "MySolver",
   "range": [0.0, 1.0],
   "variables": {
     "amplitude": 2.5,
     "frequency": 0.5
   },
-  "keyframes": [
-    {
-      "index": 0.0,
-      "value": 0
-    },
-    {
-      "index": 0.5,
-      "value": "sin(t * frequency) * amplitude",
-      "derivative": 0.5,
-      "control_points": [0.6, 12, 0.7, 8]
-    },
-    {
-      "index": 1.0,
-      "value": 10
+  "splines": {
+    "main": {
+      "value": {
+        "keyframes": [
+          {
+            "@": 0.0,
+            "value": 0
+          },
+          {
+            "@": 0.5,
+            "value": "sin(@*frequency)*amplitude",
+            "derivative": 0.5,
+            "control_points": [0.6, 12, 0.7, 8]
+          },
+          {
+            "@": 1.0,
+            "value": 10
+          }
+        ]
+      }
     }
-  ]
+  }
 }
 ```
 
@@ -265,35 +364,38 @@ Multi-dimensional data (like positions, colors, etc.) can be organized in a sing
 ```json
 {
   "version": "1.0",
+  "name": "MySolver",
   "range": [0.0, 1.0],
   "variables": {
     "amplitude": 2.5,
     "frequency": 0.5
   },
-  "dimensions": {
-    "x": {
-      "range": [0.0, 1.0],
-      "keyframes": [
-        { "index": 0.0, "value": 0 },
-        { "index": 0.5, "value": "sin(t * frequency) * amplitude" },
-        { "index": 1.0, "value": 10 }
-      ]
-    },
-    "y": {
-      "keyframes": [
-        { "index": 0.0, "value": 5 },
-        { "index": 0.5, "value": 15 },
-        { "index": 1.0, "value": 5 }
-      ],
-      "variables": {
-        "amplitude": 5.0
+  "splines": {
+    "position": {
+      "x": {
+        "range": [0.0, 1.0],
+        "keyframes": [
+          { "@": 0.0, "value": 0 },
+          { "@": 0.5, "value": "sin(@*frequency)*amplitude" },
+          { "@": 1.0, "value": 10 }
+        ]
+      },
+      "y": {
+        "variables": {
+          "amplitude": 5.0
+        },
+        "keyframes": [
+          { "@": 0.0, "value": 5 },
+          { "@": 0.5, "value": 15 },
+          { "@": 1.0, "value": 5 }
+        ]
+      },
+      "z": {
+        "keyframes": [
+          { "@": 0.0, "value": 0 },
+          { "@": 1.0, "value": 0 }
+        ]
       }
-    },
-    "z": {
-      "keyframes": [
-        { "index": 0.0, "value": 0 },
-        { "index": 1.0, "value": 0 }
-      ]
     }
   }
 }
@@ -455,64 +557,68 @@ A Scene is a collection of multiple named interpolators, which can be useful for
 ```json
 {
   "version": "1.0",
-  "name": "MyAnimation",
+  "name": "MySolver",
   "metadata": {
     "description": "A complex animation with multiple properties",
     "author": "SplinalTap User",
     "created": "2023-09-15"
   },
+  "range": [0.0, 1.0],  // Moved to Solver level as default
   "variables": {
     "pi": 3.14159,
     "amplitude": 10
   },
-  "interpolators": {
-    "position": {
-      "range": [0.0, 1.0],
-      "dimensions": {
-        "x": {
-          "keyframes": [
-            {"index": 0.0, "value": 0},
-            {"index": 0.5, "value": 10},
-            {"index": 1.0, "value": 0}
-          ]
-        },
-        "y": {
-          "keyframes": [
-            {"index": 0.0, "value": 0},
-            {"index": 0.5, "value": "sin(t*pi)"},
-            {"index": 1.0, "value": 0}
-          ]
-        },
-        "z": {
-          "keyframes": [
-            {"index": 0.0, "value": 0},
-            {"index": 1.0, "value": 5}
-          ]
-        }
+  "splines": {
+    "position": {  // Spline
+      "x": {       // Channel
+        "min-max": [0, 10],  // Inferred from values
+        "interpolation_method": "cubic",
+        "keyframes": [
+          {"@": 0.0, "value": 0},
+          {"@": 0.5, "value": 10},
+          {"@": 1.0, "value": 0}
+        ]
+      },
+      "y": {       // Channel
+        "interpolation_method": "cubic",
+        "keyframes": [
+          {"@": 0.0, "value": 0},
+          {"@": 0.5, "value": "sin(@*pi)"},  // Adjusted "t" to "@"
+          {"@": 1.0, "value": 0}
+        ]
+      },
+      "z": {       // Channel
+        "interpolation_method": "cubic",
+        "keyframes": [
+          {"@": 0.0, "value": 0},
+          {"@": 1.0, "value": 5}
+        ]
       }
     },
-    "rotation": {
-      "range": [0.0, 1.0],
+    "rotation": {  // Spline
+      "interpolation_method": "linear",  // Single value, linear makes sense
       "keyframes": [
-        {"index": 0.0, "value": 0},
-        {"index": 1.0, "value": 360}
+        {"@": 0.0, "value": 0},
+        {"@": 1.0, "value": 360}
       ]
     },
-    "scale": {
-      "dimensions": {
-        "x": {
-          "keyframes": [
-            {"index": 0.0, "value": 1},
-            {"index": 0.5, "value": "amplitude * 0.1"},
-            {"index": 1.0, "value": 1}
-          ]
-        },
-        "y": {
-          "keyframes": [
-            {"index": 0.0, "value": 1},
-            {"index": 1.0, "value": 1}
-          ]
-        }
+    "scale": {     // Spline
+      "x": {       // Channel
+        "min-max": [1, 1],  // Adjusted based on context
+        "interpolation_method": "cubic",
+        "keyframes": [
+          {"@": 0.0, "value": 1},
+          {"@": 0.5, "value": "amplitude * 0.1"},  // Evaluates to 1
+          {"@": 1.0, "value": 1}
+        ]
+      },
+      "y": {       // Channel
+        "min-max": [1, 1],
+        "interpolation_method": "cubic",
+        "keyframes": [
+          {"@": 0.0, "value": 1},
+          {"@": 1.0, "value": 1}
+        ]
       }
     }
   }

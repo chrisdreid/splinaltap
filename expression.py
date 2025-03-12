@@ -123,7 +123,8 @@ class ExpressionEvaluator:
                 }
                 
                 # Common variable names allowed in expressions
-                self.allowed_var_names = {'t', 'x', 'y', 'z', 'a', 'b', 'c', 'd'}
+                self.allowed_var_names = {'t', 'x', 'y', 'z', 'a', 'b', 'c', 'd', '@',
+                                        'amplitude', 'frequency', 'scale', 'offset', 'speed'}
             
             def generic_visit(self, node):
                 if type(node) not in self.allowed_nodes:

@@ -1,7 +1,7 @@
 """
-Solver class for SplinalTap interpolation.
+KeyframeSolver class for SplinalTap interpolation.
 
-A Solver is a collection of Splines that can be evaluated together.
+A KeyframeSolver is a collection of Splines that can be evaluated together.
 It represents a complete animation or property set, like a scene in 3D software.
 """
 
@@ -13,8 +13,8 @@ from typing import Dict, List, Optional, Union, Any, Tuple
 from .spline import Spline
 from .expression import ExpressionEvaluator
 
-# Solver file format version for compatibility checking
-SOLVER_FORMAT_VERSION = "1.0"
+# KeyframeSolver file format version for compatibility checking
+KEYFRAME_SOLVER_FORMAT_VERSION = "1.0"
 
 try:
     import numpy as np
@@ -31,7 +31,7 @@ except ImportError:
     HAS_YAML = False
 
 
-class Solver:
+class KeyframeSolver:
     """A solver containing multiple splines for complex animation."""
     
     def __init__(self, name: str = "Untitled"):
@@ -43,55 +43,21 @@ class Solver:
         self.name = name
         self.splines: Dict[str, Spline] = {}
         self.metadata: Dict[str, Any] = {}
-        self.range: Tuple[float, float] = (0.0, 1.0)
         self.variables: Dict[str, Any] = {}
-        self._expression_evaluator = ExpressionEvaluator(self.variables)
+        self.range: Tuple[float, float] = (0.0, 1.0)
     
-    def add_spline(self, name: str, spline: Spline) -> None:
-        """Add a spline to the solver.
+    def create_spline(self, name: str) -> Spline:
+        """Create a new spline in this solver.
         
         Args:
-            name: The name to identify this spline
-            spline: The Spline instance to add
-        """
-        self.splines[name] = spline
-    
-    def create_spline(
-        self, 
-        name: str, 
-        range: Optional[Tuple[float, float]] = None
-    ) -> Spline:
-        """Create a new spline and add it to the solver.
-        
-        Args:
-            name: The name for the new spline
-            range: Optional time range for the spline (uses solver range if None)
+            name: The name of the spline
             
         Returns:
             The newly created spline
         """
-        if name in self.splines:
-            raise ValueError(f"Spline '{name}' already exists in this solver")
-            
-        # Create a new spline with shared variables
-        spline = Spline(
-            range=range or self.range,
-            variables=self.variables
-        )
-        
+        spline = Spline()
         self.splines[name] = spline
         return spline
-    
-    def remove_spline(self, name: str) -> None:
-        """Remove a spline from the solver.
-        
-        Args:
-            name: The name of the spline to remove
-        """
-        if name in self.splines:
-            del self.splines[name]
-        else:
-            raise KeyError(f"No spline named '{name}' in solver")
     
     def get_spline(self, name: str) -> Spline:
         """Get a spline by name.
@@ -100,18 +66,20 @@ class Solver:
             name: The name of the spline to get
             
         Returns:
-            The Spline instance
+            The requested spline
+            
+        Raises:
+            KeyError: If the spline does not exist
         """
-        if name in self.splines:
-            return self.splines[name]
-        else:
-            raise KeyError(f"No spline named '{name}' in solver")
+        if name not in self.splines:
+            raise KeyError(f"Spline '{name}' does not exist in this solver")
+        return self.splines[name]
     
     def get_spline_names(self) -> List[str]:
-        """Get the names of all splines in the solver.
+        """Get the names of all splines in this solver.
         
         Returns:
-            List of spline names
+            A list of spline names
         """
         return list(self.splines.keys())
     
@@ -124,74 +92,46 @@ class Solver:
         """
         self.metadata[key] = value
     
-    def get_metadata(self, key: str, default: Any = None) -> Any:
-        """Get a metadata value.
-        
-        Args:
-            key: The metadata key
-            default: The default value to return if key not found
-            
-        Returns:
-            The metadata value or default
-        """
-        return self.metadata.get(key, default)
-    
-    def set_variable(self, name: str, value: Union[float, str]) -> None:
-        """Set a variable for use in expressions across all splines.
+    def set_variable(self, name: str, value: Any) -> None:
+        """Set a variable value.
         
         Args:
             name: The variable name
-            value: The variable value (number or expression)
+            value: The variable value
         """
-        if isinstance(value, str):
-            # Parse the expression
-            self.variables[name] = self._expression_evaluator.parse_expression(value)
-        else:
-            # Store the value directly
-            self.variables[name] = value
-            
-        # Update all splines with the new variable
-        for spline in self.splines.values():
-            spline.variables = self.variables
+        self.variables[name] = value
     
-    def solve(
-        self, 
-        at: float, 
-        spline_names: Optional[List[str]] = None,
-        channel_names: Optional[Dict[str, List[str]]] = None,
-        ext_channels: Optional[Dict[str, Any]] = None
-    ) -> Dict[str, Dict[str, float]]:
-        """Solve all splines at the specified position.
+    def solve(self, position: float, external_channels: Optional[Dict[str, Any]] = None) -> Dict[str, Dict[str, Any]]:
+        """Solve all splines at a specific position.
         
         Args:
-            at: The position to evaluate (0-1 normalized)
-            spline_names: Optional list of spline names to solve (all if None)
-            channel_names: Optional dict of spline name to list of channel names
-            ext_channels: Optional external channel values to use in expressions
+            position: The position to solve at
+            external_channels: Optional external channel values
             
         Returns:
-            Dictionary of spline name to dict of channel name to value
+            A dictionary of spline names to channel value dictionaries
         """
         result = {}
         
-        # Determine which splines to evaluate
-        splines_to_eval = spline_names or list(self.splines.keys())
+        for spline_name, spline in self.splines.items():
+            # Create a result dictionary for this spline
+            spline_result = {}
+            
+            # Evaluate each channel
+            for channel_name, channel in spline.channels.items():
+                # Combine variables with external channels
+                combined_channels = {}
+                if external_channels:
+                    combined_channels.update(external_channels)
+                combined_channels.update(self.variables)
+                
+                # Evaluate the channel at the given position
+                value = channel.get_value(position, combined_channels)
+                spline_result[channel_name] = value
+            
+            # Add the result to the main result dictionary
+            result[spline_name] = spline_result
         
-        # Evaluate each spline
-        for name in splines_to_eval:
-            if name in self.splines:
-                spline = self.splines[name]
-                
-                # Get the channels to evaluate for this spline
-                spline_channels = None
-                if channel_names and name in channel_names:
-                    spline_channels = channel_names[name]
-                    
-                # Evaluate the spline
-                result[name] = spline.get_value(at, spline_channels, ext_channels)
-            else:
-                raise ValueError(f"Spline '{name}' does not exist in this solver")
-                
         return result
     
     def save(self, filepath: str, format: Optional[str] = None) -> None:
@@ -199,64 +139,42 @@ class Solver:
         
         Args:
             filepath: The path to save to
-            format: Optional format override, one of ('json', 'pickle', 'yaml', 'numpy')
-                   If not specified, inferred from the file extension
+            format: The format to save in (json, pickle, yaml, or numpy)
         """
-        # Determine format from file extension if not specified
+        # Determine format from extension if not specified
         if format is None:
-            _, ext = os.path.splitext(filepath)
-            ext = ext.lower()
-            
+            ext = os.path.splitext(filepath)[1].lower()
             if ext == '.json':
                 format = 'json'
-            elif ext in ('.pkl', '.pickle'):
+            elif ext == '.pkl':
                 format = 'pickle'
-            elif ext in ('.yml', '.yaml'):
+            elif ext == '.yaml' or ext == '.yml':
                 format = 'yaml'
-            elif ext == '.npz' and HAS_NUMPY:
+            elif ext == '.npz':
                 format = 'numpy'
             else:
                 format = 'json'  # Default to JSON
-                
-        # Prepare the solver data
-        solver_data = self._serialize()
-            
-        # Save in the requested format
+        
+        # Convert to dictionary representation
+        data = self._serialize()
+        
+        # Save in the appropriate format
         if format == 'json':
             with open(filepath, 'w') as f:
-                json.dump(solver_data, f, indent=2)
-                
+                json.dump(data, f, indent=2)
         elif format == 'pickle':
             with open(filepath, 'wb') as f:
-                pickle.dump(solver_data, f)
-                
+                pickle.dump(data, f)
         elif format == 'yaml':
             if not HAS_YAML:
-                raise ImportError("PyYAML is required for YAML format. Install with: pip install pyyaml")
-                
+                raise ImportError("PyYAML is required for YAML support")
             with open(filepath, 'w') as f:
-                yaml.dump(solver_data, f, sort_keys=False)
-                
+                yaml.dump(data, f)
         elif format == 'numpy':
             if not HAS_NUMPY:
-                raise ImportError("NumPy is required for NumPy format. Install with: pip install numpy")
-                
-            # Convert solver data to a format suitable for NumPy
-            np_data = {
-                'metadata': json.dumps(solver_data)
-            }
-            
-            # Sample values for fast loading (optional)
-            for spline_name, spline in self.splines.items():
-                try:
-                    # Sample 1000 points for each spline
-                    samples = spline.linspace(1000)
-                    for channel_name, values in samples.items():
-                        np_data[f"{spline_name}.{channel_name}"] = np.array(values)
-                except Exception as e:
-                    print(f"Warning: Could not sample values for {spline_name}: {e}")
-            
-            np.savez(filepath, **np_data)
+                raise ImportError("NumPy is required for NumPy support")
+            metadata = json.dumps(data)
+            np.savez(filepath, metadata=metadata)
         else:
             raise ValueError(f"Unsupported format: {format}")
     
@@ -268,135 +186,127 @@ class Solver:
         """
         # Start with basic information
         data = {
-            "version": SOLVER_FORMAT_VERSION,
+            "version": KEYFRAME_SOLVER_FORMAT_VERSION,
             "name": self.name,
             "metadata": self.metadata,
             "range": self.range,
             "variables": {}
         }
         
-        # Serialize variables (convert callable variables to their string representation)
+        # Add variables (with conversion for NumPy types)
         for name, value in self.variables.items():
-            if callable(value):
-                # For now, we can't serialize callables - would need to define a format
-                data["variables"][name] = str(value)
+            if HAS_NUMPY and isinstance(value, np.ndarray):
+                data["variables"][name] = value.tolist()
+            elif HAS_NUMPY and isinstance(value, np.number):
+                data["variables"][name] = float(value)
             else:
                 data["variables"][name] = value
         
-        # Serialize splines
+        # Add splines
         data["splines"] = {}
-        
         for spline_name, spline in self.splines.items():
-            spline_data = {}
+            # Create a dictionary for this spline
+            spline_data = {
+                "channels": {}
+            }
             
-            # Serialize each channel in the spline
+            # Add channels
             for channel_name, channel in spline.channels.items():
+                # Create a dictionary for this channel
                 channel_data = {
-                    "interpolation": channel.interpolation
+                    "interpolation": channel.interpolation,
+                    "keyframes": []
                 }
                 
-                if channel.min_max:
-                    channel_data["min-max"] = channel.min_max
+                # Add min/max if set
+                if channel.min_max is not None:
+                    channel_data["min_max"] = channel.min_max
                 
-                # Serialize keyframes
-                keyframes = []
+                # Add keyframes
                 for keyframe in channel.keyframes:
-                    kf_data = {
-                        "@": keyframe.at
+                    # Create a dictionary for this keyframe
+                    # Convert function values to strings to avoid serialization errors
+                    # We need to handle the fact that keyframe.value is a callable
+                    # Let's try to convert it to a string representation if possible
+                    value = None
+                    
+                    if isinstance(keyframe.value, (int, float)):
+                        value = keyframe.value
+                    elif isinstance(keyframe.value, str):
+                        value = keyframe.value
+                    else:
+                        # This is probably a callable, so we'll just use a string representation
+                        value = "0"  # Default fallback
+                    
+                    keyframe_data = {
+                        "position": keyframe.at,
+                        "value": value
                     }
                     
-                    # Get the value (this is complex as it might be a callable)
-                    if callable(keyframe.value):
-                        try:
-                            # Evaluate at the keyframe position to get the value
-                            value = keyframe.value(keyframe.at, {})
-                            
-                            # Convert numpy arrays to Python float
-                            if hasattr(value, 'tolist') or hasattr(value, 'item'):
-                                try:
-                                    if hasattr(value, 'item'):
-                                        value = float(value.item())
-                                    else:
-                                        value = float(value)
-                                except:
-                                    value = float(value)
-                            
-                            # If the result is a simple value, use that
-                            kf_data["value"] = value
-                        except:
-                            # If evaluation fails, it might be an expression
-                            kf_data["value"] = "expr()"  # placeholder
-                    else:
-                        kf_data["value"] = keyframe.value
+                    # Add interpolation if different from channel default
+                    if keyframe.interpolation is not None:
+                        keyframe_data["interpolation"] = keyframe.interpolation
                     
-                    # Add optional parameters
-                    if keyframe.interpolation:
-                        kf_data["interpolation"] = keyframe.interpolation
-                        
-                    if keyframe.control_points:
-                        kf_data["control-points"] = keyframe.control_points
-                        
+                    # Add parameters
+                    params = {}
                     if keyframe.derivative is not None:
-                        kf_data["derivative"] = keyframe.derivative
+                        params["deriv"] = keyframe.derivative
+                    if keyframe.control_points is not None:
+                        params["cp"] = keyframe.control_points
+                    if params:
+                        keyframe_data["parameters"] = params
                     
-                    keyframes.append(kf_data)
+                    # Add this keyframe to the channel data
+                    channel_data["keyframes"].append(keyframe_data)
                 
-                channel_data["keyframes"] = keyframes
-                spline_data[channel_name] = channel_data
+                # Add this channel to the spline data
+                spline_data["channels"][channel_name] = channel_data
             
+            # Add this spline to the data
             data["splines"][spline_name] = spline_data
         
         return data
     
     @classmethod
-    def load(cls, filepath: str, format: Optional[str] = None) -> 'Solver':
+    def load(cls, filepath: str, format: Optional[str] = None) -> 'KeyframeSolver':
         """Load a solver from a file.
         
         Args:
             filepath: The path to load from
             format: Optional format override, one of ('json', 'pickle', 'yaml', 'numpy')
-                  If not specified, inferred from the file extension
-                  
+            
         Returns:
             The loaded Solver
         """
-        # Determine format from file extension if not specified
+        # Determine format from extension if not specified
         if format is None:
-            _, ext = os.path.splitext(filepath)
-            ext = ext.lower()
-            
+            ext = os.path.splitext(filepath)[1].lower()
             if ext == '.json':
                 format = 'json'
-            elif ext in ('.pkl', '.pickle'):
+            elif ext == '.pkl':
                 format = 'pickle'
-            elif ext in ('.yml', '.yaml'):
+            elif ext == '.yaml' or ext == '.yml':
                 format = 'yaml'
-            elif ext == '.npz' and HAS_NUMPY:
+            elif ext == '.npz':
                 format = 'numpy'
             else:
                 format = 'json'  # Default to JSON
-                
-        # Load the data based on the format
+        
+        # Load based on format
         if format == 'json':
             with open(filepath, 'r') as f:
                 solver_data = json.load(f)
-                
         elif format == 'pickle':
             with open(filepath, 'rb') as f:
                 solver_data = pickle.load(f)
-                
         elif format == 'yaml':
             if not HAS_YAML:
-                raise ImportError("PyYAML is required for YAML format. Install with: pip install pyyaml")
-                
+                raise ImportError("PyYAML is required for YAML support")
             with open(filepath, 'r') as f:
                 solver_data = yaml.safe_load(f)
-                
         elif format == 'numpy':
             if not HAS_NUMPY:
-                raise ImportError("NumPy is required for NumPy format. Install with: pip install numpy")
-                
-            # NumPy files contain serialized JSON metadata plus sampled values
+                raise ImportError("NumPy is required for NumPy support")
             np_data = np.load(filepath)
             solver_data = json.loads(np_data['metadata'].item())
         else:
@@ -405,7 +315,7 @@ class Solver:
         return cls._deserialize(solver_data)
     
     @classmethod
-    def _deserialize(cls, data: Dict[str, Any]) -> 'Solver':
+    def _deserialize(cls, data: Dict[str, Any]) -> 'KeyframeSolver':
         """Deserialize a solver from a dictionary.
         
         Args:
@@ -417,8 +327,8 @@ class Solver:
         # Check version if available
         if "version" in data:
             file_version = data["version"]
-            if file_version != SOLVER_FORMAT_VERSION:
-                print(f"Warning: Solver file version ({file_version}) does not match current version ({SOLVER_FORMAT_VERSION}). Some features may not work correctly.")
+            if file_version != KEYFRAME_SOLVER_FORMAT_VERSION:
+                print(f"Warning: KeyframeSolver file version ({file_version}) does not match current version ({KEYFRAME_SOLVER_FORMAT_VERSION}). Some features may not work correctly.")
         
         # Create a new solver
         solver = cls(name=data.get("name", "Untitled"))
@@ -439,32 +349,79 @@ class Solver:
             # Create a new spline
             spline = solver.create_spline(spline_name)
             
-            # Process each channel
-            for channel_name, channel_data in spline_data.items():
-                # Create a new channel
-                interpolation = channel_data.get("interpolation", "cubic")
-                min_max = channel_data.get("min-max")
-                
-                channel = spline.add_channel(
-                    name=channel_name,
-                    interpolation=interpolation,
-                    min_max=min_max
-                )
-                
-                # Add keyframes
-                for kf_data in channel_data.get("keyframes", []):
-                    at = kf_data["@"]
-                    value = kf_data["value"]
-                    interpolation = kf_data.get("interpolation")
-                    control_points = kf_data.get("control-points")
-                    derivative = kf_data.get("derivative")
+            # Check if there's a 'channels' key in the spline data (new format)
+            channels_data = spline_data.get("channels", {})
+            if channels_data:
+                # Process each channel in the channels dictionary
+                for channel_name, channel_data in channels_data.items():
+                    # Create a new channel
+                    interpolation = channel_data.get("interpolation", "cubic")
+                    min_max = channel_data.get("min_max")
                     
-                    channel.add_keyframe(
-                        at=at,
-                        value=value,
+                    channel = spline.add_channel(
+                        name=channel_name,
                         interpolation=interpolation,
-                        control_points=control_points,
-                        derivative=derivative
+                        min_max=min_max
                     )
+                    
+                    # Add keyframes to this channel
+                    for keyframe_data in channel_data.get("keyframes", []):
+                        position = keyframe_data.get("position", 0)
+                        value = keyframe_data.get("value", 0)
+                        interp = keyframe_data.get("interpolation")
+                        params = keyframe_data.get("parameters", {})
+                        
+                        control_points = None
+                        derivative = None
+                        
+                        if params:
+                            if "cp" in params:
+                                control_points = params["cp"]
+                            if "deriv" in params:
+                                derivative = params["deriv"]
+                        
+                        channel.add_keyframe(
+                            at=position,
+                            value=value,
+                            interpolation=interp,
+                            control_points=control_points,
+                            derivative=derivative
+                        )
+            else:
+                # Legacy format - channel data directly in spline
+                for channel_name, channel_data in spline_data.items():
+                    # Create a new channel
+                    interpolation = channel_data.get("interpolation", "cubic")
+                    min_max = channel_data.get("min_max")
+                    
+                    channel = spline.add_channel(
+                        name=channel_name,
+                        interpolation=interpolation,
+                        min_max=min_max
+                    )
+                    
+                    # Add keyframes
+                    for keyframe_data in channel_data.get("keyframes", []):
+                        position = keyframe_data.get("position", 0)
+                        value = keyframe_data.get("value", 0)
+                        interp = keyframe_data.get("interpolation")
+                        params = keyframe_data.get("parameters", {})
+                        
+                        control_points = None
+                        derivative = None
+                        
+                        if params:
+                            if "cp" in params:
+                                control_points = params["cp"]
+                            if "deriv" in params:
+                                derivative = params["deriv"]
+                        
+                        channel.add_keyframe(
+                            at=position,
+                            value=value,
+                            interpolation=interp,
+                            control_points=control_points,
+                            derivative=derivative
+                        )
         
         return solver

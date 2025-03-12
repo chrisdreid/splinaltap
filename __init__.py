@@ -4,13 +4,13 @@ splinaltap - Keyframe interpolation and expression evaluation that goes to eleve
 
 from .channel import Channel, Keyframe
 from .spline import Spline
-from .solver import Solver
+from .solver import KeyframeSolver
 from .expression import ExpressionEvaluator
 from .visualization import plot_interpolation_comparison, plot_single_interpolation
 
 __version__ = "0.3.0"
 __all__ = [
-    "Solver",
+    "KeyframeSolver",
     "Spline",
     "Channel", 
     "Keyframe",
