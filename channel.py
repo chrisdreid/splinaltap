@@ -104,8 +104,9 @@ class Channel:
             # Parse the expression
             value_callable = self._expression_evaluator.parse_expression(value)
         elif isinstance(value, (int, float)):
-            # For constant values, create a simple callable
-            value_callable = lambda t, channels={}: float(value)
+            # For constant values, create a simple callable that returns a native Python float
+            constant_value = float(value)
+            value_callable = lambda t, channels={}: constant_value
         elif callable(value):
             # If a callable is already provided, use it directly
             value_callable = value
@@ -148,7 +149,7 @@ class Channel:
             channels: Optional channel values to use in expressions
             
         Returns:
-            The interpolated value at the specified position
+            The interpolated value at the specified position as a Python float
         """
         if not self.keyframes:
             raise ValueError("Cannot get value: no keyframes defined")
@@ -157,29 +158,35 @@ class Channel:
         
         # If position is at or outside the range of keyframes, return the boundary keyframe value
         if at <= self.keyframes[0].at:
-            return self.keyframes[0].value(at, channels)
-        if at >= self.keyframes[-1].at:
-            return self.keyframes[-1].value(at, channels)
+            result = self.keyframes[0].value(at, channels)
+        elif at >= self.keyframes[-1].at:
+            result = self.keyframes[-1].value(at, channels)
+        else:
+            # Find the bracketing keyframes
+            left_kf = None
+            right_kf = None
             
-        # Find the bracketing keyframes
-        left_kf = None
-        right_kf = None
-        
-        for i in range(len(self.keyframes) - 1):
-            if self.keyframes[i].at <= at <= self.keyframes[i + 1].at:
-                left_kf = self.keyframes[i]
-                right_kf = self.keyframes[i + 1]
-                break
+            for i in range(len(self.keyframes) - 1):
+                if self.keyframes[i].at <= at <= self.keyframes[i + 1].at:
+                    left_kf = self.keyframes[i]
+                    right_kf = self.keyframes[i + 1]
+                    break
+                    
+            if left_kf is None or right_kf is None:
+                raise ValueError(f"Could not find bracketing keyframes for position {at}")
                 
-        if left_kf is None or right_kf is None:
-            raise ValueError(f"Could not find bracketing keyframes for position {at}")
+            # If the right keyframe has a specific interpolation method, use that
+            # Otherwise use the channel's default method
+            method = right_kf.interpolation or self.interpolation
             
-        # If the right keyframe has a specific interpolation method, use that
-        # Otherwise use the channel's default method
-        method = right_kf.interpolation or self.interpolation
+            # Call the appropriate interpolation method
+            result = self._interpolate(method, at, left_kf, right_kf, channels)
         
-        # Call the appropriate interpolation method
-        return self._interpolate(method, at, left_kf, right_kf, channels)
+        # Ensure we always return a Python scalar value
+        if hasattr(result, 'item') and hasattr(result, 'size') and result.size == 1:
+            return float(result.item())
+        else:
+            return float(result)
         
     def _interpolate(
         self, 
@@ -213,9 +220,18 @@ class Channel:
         right_val = right_kf.value(right_kf.at, channels)
         
         # Convert numpy arrays to Python float
-        if hasattr(left_val, 'item') or hasattr(left_val, 'tolist'):
+        if hasattr(left_val, 'item') and hasattr(left_val, 'size') and left_val.size == 1:
+            left_val = left_val.item()
+        elif hasattr(left_val, 'tolist'):
             left_val = float(left_val)
-        if hasattr(right_val, 'item') or hasattr(right_val, 'tolist'):
+        else:
+            left_val = float(left_val)
+            
+        if hasattr(right_val, 'item') and hasattr(right_val, 'size') and right_val.size == 1:
+            right_val = right_val.item()
+        elif hasattr(right_val, 'tolist'):
+            right_val = float(right_val)
+        else:
             right_val = float(right_val)
         
         # Handle different interpolation methods
@@ -360,8 +376,21 @@ class Channel:
             channels: Optional channel values to use in expressions
             
         Returns:
-            List of (position, value) tuples
+            List of (position, value) tuples with Python native types
         """
         channels = channels or {}
         
-        return [(kf.at, kf.value(kf.at, channels)) for kf in self.keyframes]
+        result = []
+        for kf in self.keyframes:
+            pos = float(kf.at)
+            val = kf.value(kf.at, channels)
+            
+            # Ensure value is a Python native type
+            if hasattr(val, 'item') and hasattr(val, 'size') and val.size == 1:
+                val = float(val.item())
+            else:
+                val = float(val)
+                
+            result.append((pos, val))
+            
+        return result
