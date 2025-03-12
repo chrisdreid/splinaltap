@@ -821,6 +821,8 @@ def get_math_functions():
     Returns:
         Dictionary of math functions and constants from the current backend.
     """
+    import random
+    
     backend = BackendManager.get_backend()
     return {
         'sin': backend.sin,
@@ -831,5 +833,8 @@ def get_math_functions():
         'exp': backend.exp,
         'pow': backend.pow,
         'pi': backend.pi,
-        'e': backend.e
+        'e': backend.e,
+        'rand': random.random,
+        'randint': lambda min_max: random.randint(min_max[0], min_max[1]) if isinstance(min_max, (list, tuple)) else 
+                                    random.randint(0, min_max)
     }

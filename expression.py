@@ -35,7 +35,9 @@ class ExpressionEvaluator:
             'abs': abs,
             'max': max,
             'min': min,
-            'round': round
+            'round': round,
+            'rand': math_funcs['rand'],
+            'randint': math_funcs['randint']
         }
         
         # Constants that can be used in expressions
@@ -64,6 +66,9 @@ class ExpressionEvaluator:
         expr = expr.replace('^', '**')
         # Replace @ with t for evaluating at position
         expr = expr.replace('@', 't')
+        # Remove any ? characters (deprecated random value syntax)
+        if '?' in expr:
+            expr = expr.replace('?', 'rand()')
         
         # Parse the expression to an AST
         try:
