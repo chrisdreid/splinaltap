@@ -407,22 +407,26 @@ def evaluate_cmd(args: argparse.Namespace) -> None:
         # Default if no samples specified: single sample at 0.0
         samples = [0.0]
     
-    # Determine which method to use - if channel specified, use that one
-    method = args.methods[0]  # Default to first method
-    if channel_methods and "default" in channel_methods:
-        method = channel_methods["default"]
-    
-    # Evaluate at all samples
-    values = []
-    for sample in samples:
-        values.append(interpolator.get_value(sample, method, channels))
-    
-    # Convert to a format compatible with format_output
+    # Process all methods provided
     results = {
-        "default": {
-            method: values
-        }
+        "default": {}
     }
+    
+    # Use all methods specified
+    methods_to_use = []
+    if channel_methods and "default" in channel_methods:
+        methods_to_use = [channel_methods["default"]] if isinstance(channel_methods["default"], str) else channel_methods["default"]
+    else:
+        methods_to_use = args.methods
+    
+    # Evaluate each method at all samples
+    for method in methods_to_use:
+        values = []
+        for sample in samples:
+            values.append(interpolator.get_value(sample, method, channels))
+        
+        # Add to results
+        results["default"][method] = values
     
     # Determine content type from args or file extension
     content_type = args.content_type
