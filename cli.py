@@ -496,7 +496,14 @@ def evaluate_cmd(args: argparse.Namespace) -> None:
         output_data["add_demo_channel"] = True
         
     # Format and output the results
-    new_format_output(output_data, samples, results, content_type, args.output_file, interpolator)
+    from splinaltap.convert import convert_to_new_format
+    formatted_output = convert_to_new_format(results, samples, output_data.get("add_demo_channel", False))
+    
+    if args.output_file:
+        with open(args.output_file, 'w') as f:
+            f.write(formatted_output)
+    else:
+        print(formatted_output)
 
 
 def parse_sample_spec(sample_spec: str) -> Tuple[float, Dict[str, List[str]]]:
@@ -963,7 +970,14 @@ def sample_cmd(args: argparse.Namespace) -> None:
         output_data["add_demo_channel"] = True
         
     # Format and output the results
-    new_format_output(output_data, samples, results, content_type, args.output_file, interpolator)
+    from splinaltap.convert import convert_to_new_format
+    formatted_output = convert_to_new_format(results, samples, output_data.get("add_demo_channel", False))
+    
+    if args.output_file:
+        with open(args.output_file, 'w') as f:
+            f.write(formatted_output)
+    else:
+        print(formatted_output)
 
 
 def scene_info_cmd(args: argparse.Namespace) -> None:
@@ -1393,16 +1407,4 @@ def main():
 
 if __name__ == "__main__":
     sys.exit(main())
-# Added new helper function for formatting the output
-def new_format_output(data: Dict, samples: List[float], results: Dict, content_type: str = "json", 
-               output_file: Optional[str] = None, interpolator: Optional[KeyframeInterpolator] = None) -> None:
-    """Simplified version that just outputs JSON in the new format."""
-    from splinaltap.convert import convert_to_new_format
-    
-    formatted_output = convert_to_new_format(results, samples, data.get("add_demo_channel", False))
-    
-    if output_file:
-        with open(output_file, 'w') as f:
-            f.write(formatted_output)
-    else:
-        print(formatted_output)
+# Helper function removed as we now directly use convert_to_new_format from splinaltap.convert
