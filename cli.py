@@ -1203,6 +1203,144 @@ def generate_scene_cmd(args: argparse.Namespace) -> None:
             
     print(f"Generated scene file: {filepath}")
 
+def scene_cmd(arg: str = None) -> int:
+    """Handle the scene command with the given arguments.
+    
+    Args:
+        arg: Command string in formats:
+             'info INPUT_FILE' - Show scene info
+             'ls INPUT_FILE' - List interpolators
+             'convert INPUT_FILE OUTPUT_FILE [FORMAT]' - Convert scene format
+             'extract INPUT_FILE OUTPUT_FILE INTERPOLATOR_NAME' - Extract interpolator
+        
+    Returns:
+        0 on success, 1 on error
+    """
+    if not arg or not arg.strip():
+        print("Scene command requires an action. Available actions:")
+        print("  info INPUT_FILE              - Show scene information")
+        print("  ls INPUT_FILE                - List interpolators in scene")
+        print("  convert INPUT_FILE OUTPUT    - Convert scene to different format")
+        print("  extract INPUT_FILE OUTPUT NAME - Extract interpolator to new scene")
+        return 1
+    
+    parts = arg.strip().split()
+    if not parts:
+        return 1
+        
+    action = parts[0].lower()
+    
+    # Handle 'info' action - requires input file
+    if action == "info" and len(parts) >= 2:
+        input_file = parts[1]
+        try:
+            scene = Scene.load(input_file)
+            
+            print(f"Scene: {scene.name}")
+            print(f"Number of interpolators: {len(scene.interpolators)}")
+            print("\nMetadata:")
+            for key, value in scene.metadata.items():
+                print(f"  {key}: {value}")
+                
+            print("\nVersion:", scene.version if hasattr(scene, 'version') else "unknown")
+            return 0
+        except Exception as e:
+            print(f"Error loading scene: {e}")
+            return 1
+    
+    # Handle 'ls' action - list interpolators in a scene
+    elif action == "ls" and len(parts) >= 2:
+        input_file = parts[1]
+        try:
+            scene = Scene.load(input_file)
+            
+            print(f"Scene: {scene.name}")
+            print(f"Interpolators ({len(scene.interpolators)}):")
+            
+            for name in scene.get_interpolator_names():
+                interpolator = scene.get_interpolator(name)
+                num_keyframes = len(interpolator.keyframes)
+                try:
+                    time_range = interpolator.get_time_range()
+                    time_info = f"time range: {time_range[0]} to {time_range[1]}"
+                except:
+                    time_info = "no keyframes"
+                    
+                print(f"  {name}: {num_keyframes} keyframes, {time_info}")
+            return 0
+        except Exception as e:
+            print(f"Error loading scene: {e}")
+            return 1
+    
+    # Handle 'convert' action - convert scene format
+    elif action == "convert" and len(parts) >= 3:
+        input_file = parts[1]
+        output_file = parts[2]
+        # Optional format parameter
+        format = parts[3] if len(parts) >= 4 else None
+        
+        try:
+            scene = Scene.load(input_file)
+            
+            # Auto-determine format from extension if not specified
+            if format is None:
+                _, ext = os.path.splitext(output_file)
+                if ext in ('.json', '.pkl', '.pickle', '.py', '.yml', '.yaml', '.npz'):
+                    format = None  # Let the save method determine it
+                else:
+                    format = 'json'  # Default
+            
+            # Save to new format
+            scene.save(output_file, format=format)
+            print(f"Converted scene '{scene.name}' from {input_file} to {output_file}")
+            return 0
+        except Exception as e:
+            print(f"Error converting scene: {e}")
+            return 1
+    
+    # Handle 'extract' action - extract interpolator to new scene
+    elif action == "extract" and len(parts) >= 4:
+        input_file = parts[1]
+        output_file = parts[2]
+        interpolator_name = parts[3]
+        
+        try:
+            scene = Scene.load(input_file)
+            
+            # Check if the interpolator exists
+            if interpolator_name not in scene.interpolators:
+                print(f"Error: No interpolator named '{interpolator_name}' in the scene")
+                return 1
+            
+            interpolator = scene.get_interpolator(interpolator_name)
+            
+            # Create a new scene with just this interpolator
+            new_scene = Scene(name=f"{scene.name} - {interpolator_name}")
+            new_scene.add_interpolator(interpolator_name, interpolator)
+            
+            # Copy relevant metadata
+            if 'description' in scene.metadata:
+                new_scene.set_metadata('description', 
+                                     f"Extracted from {scene.name}: {scene.metadata['description']}")
+            
+            # Save the new scene
+            new_scene.save(output_file)
+            print(f"Extracted interpolator '{interpolator_name}' from scene '{scene.name}' to {output_file}")
+            return 0
+        except Exception as e:
+            print(f"Error extracting interpolator: {e}")
+            return 1
+    
+    else:
+        print(f"Unknown or incomplete scene action: {arg}")
+        print("Available actions:")
+        print("  info INPUT_FILE              - Show scene information")
+        print("  ls INPUT_FILE                - List interpolators in scene")
+        print("  convert INPUT_FILE OUTPUT    - Convert scene to different format")
+        print("  extract INPUT_FILE OUTPUT NAME - Extract interpolator to new scene")
+        return 1
+
+
 def backend_cmd(arg: str = None) -> int:
     """Handle the backend command with the given argument.
     
@@ -1286,12 +1424,7 @@ def create_parser() -> argparse.ArgumentParser:
     # Add each command as a flag (evaluation is the default when no command specified)
     command_exclusive.add_argument("--visualize", action="store_const", const="visualize", 
                                  dest="command", help="Visualize interpolation")
-    command_exclusive.add_argument("--scene-info", action="store_const", const="scene-info", 
-                                 dest="command", help="Display information about a scene")
-    command_exclusive.add_argument("--scene-convert", action="store_const", const="scene-convert", 
-                                 dest="command", help="Convert a scene file to a different format")
-    command_exclusive.add_argument("--scene-extract", action="store_const", const="scene-extract", 
-                                 dest="command", help="Extract an interpolator from a scene to a new file")
+    # Removed scene-specific commands as they'll be handled by the unified --scene command
     # Backend command is now handled by --backend-cmd directly, no longer needed here
     command_exclusive.add_argument("--generate-scene", 
                                  dest="generate_scene_path", metavar="FILEPATH",
@@ -1327,11 +1460,16 @@ def create_parser() -> argparse.ArgumentParser:
     parser.add_argument("--content-type", choices=["json", "csv", "yaml", "text"],
                       help="Format for output data (default: json or determined from output file extension)")
 #   Removed --scene-path as it's been integrated into --generate-scene directly
-    parser.add_argument("--interpolator-name", help="Name of the interpolator to extract")
+#   Removed --interpolator-name as it's now part of the --scene extract command
     
     # Backend command with direct action - use nargs='?' to make the argument optional
     parser.add_argument("--backend", dest="backend_action", metavar="[OPTION]", nargs='?', const='',
                        help="Manage backends: no arg shows current, 'ls' lists all, 'info' shows details, 'NAME' sets backend, 'best' uses best")
+    
+    # Unified scene command with subcommands
+    parser.add_argument("--scene", dest="scene_action", metavar="ACTION", nargs='?',
+                       help="Scene operations: 'info INPUT_FILE' shows scene info, 'ls INPUT_FILE' lists interpolators, "
+                           "'convert INPUT_FILE OUTPUT_FILE' converts formats, 'extract INPUT_FILE OUTPUT_FILE INTERPOLATOR_NAME' extracts an interpolator")
     
     return parser
 
@@ -1343,9 +1481,14 @@ def main():
         # Parse arguments
         args = parser.parse_args()
         
-        # Handle the backend command immediately if present - it has highest priority
+        # Handle special commands with highest priority
+        # Backend command
         if hasattr(args, 'backend_action') and args.backend_action is not None:
             return backend_cmd(args.backend_action)
+            
+        # Scene command
+        if hasattr(args, 'scene_action') and args.scene_action is not None:
+            return scene_cmd(args.scene_action)
             
         # If no arguments were provided, print help and exit
         if len(sys.argv) == 1:
@@ -1387,15 +1530,7 @@ def main():
         elif args.command == "evaluate" and not (args.input_file or args.keyframes):
             print("Error: Either --input-file or --keyframes is required")
             return 1
-        elif args.command == "scene-info" and not args.input_file:
-            print("Error: --input-file is required for --scene-info")
-            return 1
-        elif args.command == "scene-convert" and (not args.input_file or not args.output_file):
-            print("Error: --input-file and --output-file are required for --scene-convert")
-            return 1
-        elif args.command == "scene-extract" and (not args.input_file or not args.output_file or not args.interpolator_name):
-            print("Error: --input-file, --output-file, and --interpolator-name are required for --scene-extract")
-            return 1
+        # Scene validation is now handled by the scene_cmd function
         
         # Execute the appropriate command
         if args.command == "visualize":
@@ -1404,12 +1539,7 @@ def main():
             evaluate_cmd(args)
         elif args.command == "sample":
             sample_cmd(args)
-        elif args.command == "scene-info":
-            scene_info_cmd(args)
-        elif args.command == "scene-convert":
-            scene_convert_cmd(args)
-        elif args.command == "scene-extract":
-            scene_extract_cmd(args)
+        # Scene commands are now handled by the unified --scene command
         # Backend command is now handled separately via --backend-cmd
         else:
             # This shouldn't happen, but just in case
