@@ -13,8 +13,8 @@ from typing import Dict, List, Optional, Union, Any, Tuple
 from .spline import Spline
 from .expression import ExpressionEvaluator
 
-# KeyframeSolver file format version for compatibility checking
-KEYFRAME_SOLVER_FORMAT_VERSION = "1.0"
+# KeyframeSolver file format version
+KEYFRAME_SOLVER_FORMAT_VERSION = "2.0"
 
 try:
     import numpy as np
@@ -45,6 +45,7 @@ class KeyframeSolver:
         self.metadata: Dict[str, Any] = {}
         self.variables: Dict[str, Any] = {}
         self.range: Tuple[float, float] = (0.0, 1.0)
+        self.publish: Dict[str, List[str]] = {}
     
     def create_spline(self, name: str) -> Spline:
         """Create a new spline in this solver.
@@ -100,6 +101,21 @@ class KeyframeSolver:
             value: The variable value
         """
         self.variables[name] = value
+        
+    def set_publish(self, source: str, targets: List[str]) -> None:
+        """Set up a publication channel for cross-channel or cross-spline access.
+        
+        Args:
+            source: The source channel in "spline.channel" format
+            targets: A list of targets that can access the source ("spline.channel" format or "*" for global)
+        
+        Raises:
+            ValueError: If source format is incorrect
+        """
+        if '.' not in source:
+            raise ValueError(f"Source must be in 'spline.channel' format, got {source}")
+            
+        self.publish[source] = targets
     
     def solve(self, position: float, external_channels: Optional[Dict[str, Any]] = None) -> Dict[str, Dict[str, Any]]:
         """Solve all splines at a specific position.
@@ -125,25 +141,113 @@ class KeyframeSolver:
                 normalized_position = 1.0
         else:
             normalized_position = position
+            
+        # First pass: calculate channel values without expressions that might depend on other channels
+        channel_values = {}
         
         for spline_name, spline in self.splines.items():
-            # Create a result dictionary for this spline
             spline_result = {}
-            
-            # Evaluate each channel
             for channel_name, channel in spline.channels.items():
-                # Combine variables with external channels
-                combined_channels = {}
-                if external_channels:
-                    combined_channels.update(external_channels)
-                combined_channels.update(self.variables)
-                
-                # Evaluate the channel at the normalized position
-                value = channel.get_value(normalized_position, combined_channels)
-                spline_result[channel_name] = value
-            
-            # Add the result to the main result dictionary
+                # For simple numeric keyframes, evaluate them first
+                if all(not isinstance(kf.value, str) and callable(kf.value) for kf in channel.keyframes):
+                    # Combine variables with external channels for non-expression evaluation
+                    combined_channels = {}
+                    if external_channels:
+                        combined_channels.update(external_channels)
+                    combined_channels.update(self.variables)
+                    
+                    # Evaluate the channel at the normalized position
+                    value = channel.get_value(normalized_position, combined_channels)
+                    spline_result[channel_name] = value
+                    
+                    # Store the channel value for expression evaluation
+                    channel_values[f"{spline_name}.{channel_name}"] = value
+                    
             result[spline_name] = spline_result
+        
+        # Second pass: evaluate channels with expressions that might depend on other channels
+        for spline_name, spline in self.splines.items():
+            # Ensure spline_result exists for this spline
+            if spline_name not in result:
+                result[spline_name] = {}
+                
+            for channel_name, channel in spline.channels.items():
+                # Skip channels already evaluated in the first pass
+                if channel_name in result[spline_name]:
+                    continue
+                    
+                # Create an accessible channels dictionary based on publish rules
+                accessible_channels = {}
+                
+                # Add external channels
+                if external_channels:
+                    accessible_channels.update(external_channels)
+                    
+                # Add solver variables
+                accessible_channels.update(self.variables)
+                
+                # Add channels from the same spline (always accessible)
+                for ch_name, ch_value in result.get(spline_name, {}).items():
+                    accessible_channels[ch_name] = ch_value
+                
+                # Add published channels
+                for source, targets in self.publish.items():
+                    # Check if this channel can access the published channel
+                    channel_path = f"{spline_name}.{channel_name}"
+                    can_access = False
+                    
+                    # Check for global access with "*"
+                    if "*" in targets:
+                        can_access = True
+                    # Check for specific access
+                    elif channel_path in targets:
+                        can_access = True
+                    # Check for spline-level access (spline.*)
+                    elif any(target.endswith(".*") and channel_path.startswith(target[:-1]) for target in targets):
+                        can_access = True
+                    # For debugging, print channel path and any wildcard matches
+                    # print(f"Channel {channel_path} checking against targets {targets}, can_access={can_access}")
+                        
+                    if can_access and source in channel_values:
+                        # Extract just the channel name for easier access in expressions
+                        source_parts = source.split(".")
+                        if len(source_parts) == 2:
+                            # Make the channel value accessible using the full path and just the channel name
+                            accessible_channels[source] = channel_values[source]
+                            accessible_channels[source_parts[1]] = channel_values[source]
+                
+                # Check channel-level publish list
+                for other_spline_name, other_spline in self.splines.items():
+                    for other_channel_name, other_channel in other_spline.channels.items():
+                        if hasattr(other_channel, 'publish') and other_channel.publish:
+                            source_path = f"{other_spline_name}.{other_channel_name}"
+                            target_path = f"{spline_name}.{channel_name}"
+                            
+                            # Check if this channel is in the publish list using different matching patterns
+                            can_access = False
+                            
+                            # Check for direct exact match
+                            if target_path in other_channel.publish:
+                                can_access = True
+                            # Check for global "*" wildcard access
+                            elif "*" in other_channel.publish:
+                                can_access = True
+                            # Check for spline-level wildcard "spline.*" access
+                            elif any(pattern.endswith(".*") and target_path.startswith(pattern[:-1]) for pattern in other_channel.publish):
+                                can_access = True
+                                
+                            if can_access and source_path in channel_values:
+                                # If the other channel has been evaluated, make it accessible
+                                accessible_channels[source_path] = channel_values[source_path]
+                                # Also make it accessible by just the channel name
+                                accessible_channels[other_channel_name] = channel_values[source_path]
+                
+                # Evaluate the channel with the accessible channels
+                value = channel.get_value(normalized_position, accessible_channels)
+                result[spline_name][channel_name] = value
+                
+                # Store the value for later channel access
+                channel_values[f"{spline_name}.{channel_name}"] = value
         
         return result
         
@@ -212,12 +316,16 @@ class KeyframeSolver:
         """
         # Start with basic information
         data = {
-            "version": KEYFRAME_SOLVER_FORMAT_VERSION,
+            "version": "2.0",  # Update version for new publish feature
             "name": self.name,
             "metadata": self.metadata,
             "range": self.range,
             "variables": {}
         }
+        
+        # Add publish directives if present
+        if self.publish:
+            data["publish"] = self.publish
         
         # Add variables (with conversion for NumPy types)
         for name, value in self.variables.items():
@@ -248,6 +356,10 @@ class KeyframeSolver:
                 if channel.min_max is not None:
                     channel_data["min_max"] = channel.min_max
                 
+                # Add publish list if present
+                if hasattr(channel, 'publish') and channel.publish:
+                    channel_data["publish"] = channel.publish
+                
                 # Add keyframes
                 for keyframe in channel.keyframes:
                     # Create a dictionary for this keyframe
@@ -265,7 +377,7 @@ class KeyframeSolver:
                         value = "0"  # Default fallback
                     
                     keyframe_data = {
-                        "position": keyframe.at,
+                        "@": keyframe.at,  # Use @ instead of position
                         "value": value
                     }
                     
@@ -350,11 +462,11 @@ class KeyframeSolver:
         Returns:
             The deserialized Solver
         """
-        # Check version if available
+        # Check version - require version 2.0
         if "version" in data:
             file_version = data["version"]
-            if file_version != KEYFRAME_SOLVER_FORMAT_VERSION:
-                print(f"Warning: KeyframeSolver file version ({file_version}) does not match current version ({KEYFRAME_SOLVER_FORMAT_VERSION}). Some features may not work correctly.")
+            if file_version != "2.0":
+                raise ValueError(f"Unsupported KeyframeSolver file version: {file_version}. Current version is 2.0.")
         
         # Create a new solver
         solver = cls(name=data.get("name", "Untitled"))
@@ -369,6 +481,11 @@ class KeyframeSolver:
         # Set variables
         for name, value in data.get("variables", {}).items():
             solver.set_variable(name, value)
+            
+        # Set publish directives
+        if "publish" in data:
+            for source, targets in data["publish"].items():
+                solver.publish[source] = targets
         
         # Create splines
         splines_data = data.get("splines", {})
@@ -389,6 +506,7 @@ class KeyframeSolver:
                         channel_name = channel_item.get("name", f"channel_{len(spline.channels)}")
                         interpolation = channel_item.get("interpolation", "cubic")
                         min_max = channel_item.get("min_max")
+                        publish = channel_item.get("publish")
                         
                         # Convert list min_max to tuple (needed for test assertions)
                         if isinstance(min_max, list) and len(min_max) == 2:
@@ -398,7 +516,8 @@ class KeyframeSolver:
                             name=channel_name,
                             interpolation=interpolation,
                             min_max=min_max,
-                            replace=True  # Add replace=True to handle duplicates
+                            replace=True,  # Add replace=True to handle duplicates
+                            publish=publish
                         )
                         
                         # Add keyframes
@@ -412,8 +531,8 @@ class KeyframeSolver:
                                 control_points = None
                                 derivative = None
                             else:
-                                # Object format
-                                position = kf_data.get("position", 0)
+                                # Object format - only support "@" key for positions
+                                position = kf_data.get("@", 0)
                                 value = kf_data.get("value", 0)
                                 interp = kf_data.get("interpolation")
                                 params = kf_data.get("parameters", {})
@@ -492,17 +611,20 @@ class KeyframeSolver:
                             # Create a channel
                             interpolation = channel_data.get("interpolation", "cubic")
                             min_max = channel_data.get("min_max")
+                            publish = channel_data.get("publish")
                             
                             channel = spline.add_channel(
                                 name=channel_name,
                                 interpolation=interpolation,
                                 min_max=min_max,
-                                replace=True  # Replace existing channel if it exists
+                                replace=True,  # Replace existing channel if it exists
+                                publish=publish
                             )
                             
                             # Add keyframes
                             for keyframe_data in channel_data.get("keyframes", []):
-                                position = keyframe_data.get("position", 0)
+                                # Support both old "position" key and new "@" key
+                                position = keyframe_data.get("@", keyframe_data.get("position", 0))
                                 value = keyframe_data.get("value", 0)
                                 interp = keyframe_data.get("interpolation")
                                 params = keyframe_data.get("parameters", {})
@@ -545,7 +667,8 @@ class KeyframeSolver:
                                 # Add keyframes if available
                                 if isinstance(channel_data, dict) and "keyframes" in channel_data:
                                     for keyframe_data in channel_data["keyframes"]:
-                                        position = keyframe_data.get("position", 0)
+                                        # Support both old "position" key and new "@" key
+                                        position = keyframe_data.get("@", keyframe_data.get("position", 0))
                                         value = keyframe_data.get("value", 0)
                                         interp = keyframe_data.get("interpolation")
                                         params = keyframe_data.get("parameters", {})
@@ -582,7 +705,8 @@ class KeyframeSolver:
                     
                     # Add keyframes
                     for keyframe_data in channel_data.get("keyframes", []):
-                        position = keyframe_data.get("position", 0)
+                        # Support both old "position" key and new "@" key
+                        position = keyframe_data.get("@", keyframe_data.get("position", 0))
                         value = keyframe_data.get("value", 0)
                         interp = keyframe_data.get("interpolation")
                         params = keyframe_data.get("parameters", {})

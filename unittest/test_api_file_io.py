@@ -72,6 +72,8 @@ class TestFileIO(unittest.TestCase):
         
         # Verify keyframes
         x_keyframes = position_spline.channels["x"].keyframes
+        
+        # Now verify the keyframe count
         self.assertEqual(len(x_keyframes), 3)
         
         # Verify expression channel

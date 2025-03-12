@@ -35,7 +35,8 @@ class Spline:
         name: str, 
         interpolation: str = "cubic",
         min_max: Optional[Tuple[float, float]] = None,
-        replace: bool = False
+        replace: bool = False,
+        publish: Optional[List[str]] = None
     ) -> Channel:
         """Add a new channel to this spline.
         
@@ -44,6 +45,7 @@ class Spline:
             interpolation: Default interpolation method for this channel
             min_max: Optional min/max range constraints for this channel's values
             replace: If True, replace existing channel with the same name
+            publish: Optional list of channel references to publish this channel's value to
             
         Returns:
             The newly created channel
@@ -55,7 +57,8 @@ class Spline:
         channel = Channel(
             interpolation=interpolation,
             min_max=min_max,
-            variables=self.variables
+            variables=self.variables,
+            publish=publish
         )
         
         self.channels[name] = channel

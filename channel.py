@@ -41,7 +41,7 @@ class Keyframe:
             control_points: Optional control points for bezier interpolation
             derivative: Optional derivative value for hermite interpolation
         """
-        self.at = at
+        self.at = at  # Keep the 'at' parameter name for backward compatibility
         self.value = value
         self.interpolation = interpolation
         self.control_points = control_points
@@ -58,7 +58,8 @@ class Channel:
         self, 
         interpolation: str = "cubic",
         min_max: Optional[Tuple[float, float]] = None,
-        variables: Optional[Dict[str, Any]] = None
+        variables: Optional[Dict[str, Any]] = None,
+        publish: Optional[List[str]] = None
     ):
         """Initialize a channel.
         
@@ -66,11 +67,13 @@ class Channel:
             interpolation: Default interpolation method for this channel
             min_max: Optional min/max range constraints for this channel's values
             variables: Optional variables to be used in expressions
+            publish: Optional list of channel references to publish this channel's value to
         """
         self.interpolation = interpolation
         self.min_max = min_max
         self.keyframes: List[Keyframe] = []
         self.variables = variables or {}
+        self.publish = publish or []
         self._expression_evaluator = None
         
     def add_keyframe(

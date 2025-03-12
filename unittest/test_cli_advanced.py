@@ -180,8 +180,12 @@ class TestCLIAdvanced(unittest.TestCase):
                         # But be flexible about the exact format
                         positions = set()
                         for kf in channel['keyframes']:
-                            if isinstance(kf, dict) and 'position' in kf:
-                                positions.add(kf['position'])
+                            if isinstance(kf, dict):
+                                # Check for both old 'position' and new '@' format
+                                if 'position' in kf:
+                                    positions.add(kf['position'])
+                                elif '@' in kf:
+                                    positions.add(kf['@'])
                             elif isinstance(kf, list) and len(kf) > 0:
                                 positions.add(kf[0])
                         
