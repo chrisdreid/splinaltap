@@ -134,20 +134,27 @@ The name "splinaltap" is a playful nod to the mockumentary "This Is Spinal Tap" 
 ## Command Line Interface
 
 ```bash
-# Sample at specific points
+# Sample at specific points with cubic interpolation
 splinaltap --keyframes "0:0@cubic" "0.5:10@cubic" "1:0@cubic" --samples 0.25 0.5 0.75
 
-# Create a visualization
-splinaltap --visualize --keyframes "0:0@cubic" "0.5:sin(t*pi)@cubic" "1:0@cubic" --samples 100
+# Create a visualization with sin wave using mathematical expressions
+splinaltap --visualize --keyframes "0:0@cubic" "0.5:sin(@*3.14159)@cubic" "1:0@cubic" --samples 100
 
-# Use channel-specific methods
+# Use custom sample range (from 2.0 to 3.0 instead of 0-1)
+splinaltap --keyframes "0:0" "1:10" --samples 5 --range 2,3
+
+# Sample with specific interpolation methods per channel
 splinaltap --keyframes "0:0@linear" "1:10@linear" --samples 0.5@position:linear@rotation:hermite
 
-# Use expressions with variables
-splinaltap --keyframes "0:0@cubic" "0.5:amplitude*sin(t*pi)@cubic" "1:0@cubic" --variables "amplitude=10" --samples 100 
+# Use expressions with predefined variables
+splinaltap --keyframes "0:0@cubic" "0.5:amplitude*sin(@*pi)@cubic" "1:0@cubic" --variables "amplitude=10,pi=3.14159" --samples 100 
 
-# Save and load from files
-splinaltap --input-file data.json --samples 100 --output-file output.csv
+# Using indices instead of normalized positions 
+splinaltap --keyframes "0:0" "5:5" "10:10" --use-indices --samples 0 5 10
+
+# Save and load from files with different output formats
+splinaltap --input-file data.json --samples 100 --output-file output.csv --content-type csv
+splinaltap --input-file data.json --samples 100 --output-file output.json --content-type json
 ```
 - 🎛️ **Channel Support**: Pass in dynamic channel values that can be used in expressions at runtime
 - 🔢 **Multi-component Support**: Interpolate vectors, scalars, and other multi-component values
@@ -356,7 +363,7 @@ python splinaltap --backend jax --input-file input.json --samples 1000        # 
 
 SplinalTap supports two main JSON file formats: single-dimension interpolators and multi-dimension interpolators.
 
-#### Single-Dimension Interpolator
+#### Single-Dimension Interpolator (Solver.json)
 
 The simplest format represents a single interpolator:
 
@@ -365,73 +372,129 @@ The simplest format represents a single interpolator:
   "version": "1.0",
   "name": "MySolver",
   "range": [0.0, 1.0],
+  "metadata": {
+    "description": "Simple animation curve",
+    "author": "SplinalTap"
+  },
   "variables": {
     "amplitude": 2.5,
-    "frequency": 0.5
+    "frequency": 0.5,
+    "pi": 3.14159
   },
   "splines": {
     "main": {
-      "value": {
-        "keyframes": [
-          {
-            "at": 0.0,
-            "value": 0
-          },
-          {
-            "at": 0.5,
-            "value": "sin(t*frequency)*amplitude",
-            "derivative": 0.5,
-            "control_points": [0.6, 12, 0.7, 8]
-          },
-          {
-            "at": 1.0,
-            "value": 10
-          }
-        ]
+      "channels": {
+        "value": {
+          "interpolation": "cubic",
+          "min_max": [0, 10],
+          "keyframes": [
+            {
+              "position": 0.0,
+              "value": 0
+            },
+            {
+              "position": 0.5,
+              "value": "sin(@*frequency)*amplitude",
+              "interpolation": "hermite",
+              "parameters": {
+                "deriv": 0.5
+              }
+            },
+            {
+              "position": 0.75,
+              "value": 5,
+              "interpolation": "bezier",
+              "parameters": {
+                "cp": [0.6, 12, 0.7, 8]
+              }
+            },
+            {
+              "position": 1.0,
+              "value": 10
+            }
+          ]
+        }
       }
     }
   }
 }
 ```
 
-#### Multi-Dimension Interpolator
+#### Multi-Dimension Interpolator (Vector Data)
 
 Multi-dimensional data (like positions, colors, etc.) can be organized in a single JSON file with dimensions as properties:
 
 ```json
 {
   "version": "1.0",
-  "name": "MySolver",
+  "name": "VectorAnimation",
   "range": [0.0, 1.0],
+  "metadata": {
+    "description": "3D position animation with multiple channels",
+    "author": "SplinalTap",
+    "created": "2025-03-12"
+  },
   "variables": {
     "amplitude": 2.5,
-    "frequency": 0.5
+    "frequency": 0.5,
+    "pi": 3.14159
   },
   "splines": {
     "position": {
-      "x": {
-        "range": [0.0, 1.0],
-        "keyframes": [
-          { "at": 0.0, "value": 0 },
-          { "at": 0.5, "value": "sin(t*frequency)*amplitude" },
-          { "at": 1.0, "value": 10 }
-        ]
-      },
-      "y": {
-        "variables": {
-          "amplitude": 5.0
+      "channels": {
+        "x": {
+          "interpolation": "cubic",
+          "min_max": [0, 10],
+          "keyframes": [
+            { "position": 0.0, "value": 0 },
+            { "position": 0.5, "value": "sin(@*pi*frequency)*amplitude" },
+            { "position": 1.0, "value": 10 }
+          ]
         },
-        "keyframes": [
-          { "at": 0.0, "value": 5 },
-          { "at": 0.5, "value": 15 },
-          { "at": 1.0, "value": 5 }
-        ]
-      },
-      "z": {
-        "keyframes": [
-          { "at": 0.0, "value": 0 },
-          { "at": 1.0, "value": 0 }
-        ]
+        "y": {
+          "interpolation": "hermite",
+          "min_max": [0, 15],
+          "variables": {
+            "amplitude": 5.0
+          },
+          "keyframes": [
+            { "position": 0.0, "value": 5 },
+            { 
+              "position": 0.5, 
+              "value": 15,
+              "parameters": {
+                "deriv": 0
+              }
+            },
+            { 
+              "position": 1.0, 
+              "value": 5,
+              "parameters": {
+                "deriv": -10
+              }
+            }
+          ]
+        },
+        "z": {
+          "interpolation": "bezier",
+          "keyframes": [
+            { "position": 0.0, "value": 0 },
+            { 
+              "position": 0.5,
+              "value": 5,
+              "parameters": {
+                "cp": [0.2, 2, 0.4, 7]
+              }
+            },
+            { 
+              "position": 1.0,
+              "value": 0,
+              "parameters": {
+                "cp": [0.6, 3, 0.8, 1]
+              }
+            }
+          ]
+        }
       }
     }
   }
@@ -675,11 +738,13 @@ When using SplinalTap to evaluate or sample keyframes, the output follows a simp
 
 ```json
 {
-  "version": "1.0",
+  "version": "2.0",
   "samples": [0.0, 0.25, 0.5, 0.75, 1.0],
   "results": {
-    "chan-x": [0.0, 2.5, 5.0, 7.5, 10.0],
-    "position": [0.0, 2.5, 5.0, 7.5, 10.0]
+    "default.value": [0.0, 0.625, 1.0, 0.625, 0.0],
+    "position.x": [0.0, 2.5, 5.0, 7.5, 10.0],
+    "position.y": [5.0, 10.0, 15.0, 10.0, 5.0],
+    "position.z": [0.0, 2.5, 5.0, 2.5, 0.0]
   }
 }
 ```
@@ -692,6 +757,77 @@ The output consists of:
 Each channel's values are stored as a simple array, with positions corresponding to the same index in the samples array. This makes the output easy to parse and use in any application.
 
 For more details on each command, run `splinaltap <command> --help`.
+
+## API Usage Examples
+
+```python
+# Using the KeyframeSolver API
+from splinaltap import KeyframeSolver, Spline, Channel
+
+# Create a solver with metadata
+solver = KeyframeSolver(name="Example")
+solver.set_metadata("description", "Animation curves for a 2D path")
+solver.set_metadata("author", "SplinalTap")
+
+# Create splines and channels with different interpolation methods
+position = solver.create_spline("position")
+x_channel = position.add_channel("x", interpolation="cubic")
+y_channel = position.add_channel("y", interpolation="hermite")
+z_channel = position.add_channel("z", interpolation="bezier")
+
+# Add built-in values and variables for use in expressions
+solver.set_variable("pi", 3.14159)
+solver.set_variable("amplitude", 10)
+solver.set_variable("frequency", 2)
+
+# Add keyframes with different methods and parameters
+# For x channel (cubic - default method)
+x_channel.add_keyframe(at=0.0, value=0)
+x_channel.add_keyframe(at=0.5, value="amplitude * sin(@*frequency*pi)")
+x_channel.add_keyframe(at=1.0, value=0)
+
+# For y channel (hermite - with derivatives)
+y_channel.add_keyframe(at=0.0, value=0, derivative=0)
+y_channel.add_keyframe(at=0.5, value=10, derivative=0)
+y_channel.add_keyframe(at=1.0, value=0, derivative=-5)
+
+# For z channel (bezier - with control points)
+z_channel.add_keyframe(at=0.0, value=0, control_points=[0.1, 2, 0.2, 5])
+z_channel.add_keyframe(at=0.5, value=5, control_points=[0.6, 8, 0.7, 2])
+z_channel.add_keyframe(at=1.0, value=0)
+
+# Set min/max clamping for a channel
+x_channel.min_max = (0, 10)  # Clamp x values between 0 and 10
+
+# Evaluate at specific positions
+position_025 = solver.solve(0.25)
+position_050 = solver.solve(0.50)
+position_075 = solver.solve(0.75)
+
+print(f"Position at 0.25: {position_025}")
+print(f"Position at 0.50: {position_050}")
+print(f"Position at 0.75: {position_075}")
+
+# Evaluate multiple positions at once
+positions = [0.0, 0.25, 0.5, 0.75, 1.0]
+results = solver.solve_multiple(positions)
+print(f"Multiple results: {results}")
+
+# Save to file in different formats
+solver.save("example.json", format="json")
+solver.save("example.yaml", format="yaml")
+solver.save("example.pkl", format="pickle")
+
+# Load from file
+loaded_solver = KeyframeSolver.load("example.json")
+print(f"Loaded: {loaded_solver.name}")
+print(f"Metadata: {loaded_solver.metadata}")
+print(f"Splines: {list(loaded_solver.splines.keys())}")
+
+# Create a copy of the solver
+copied_solver = solver.copy()
+print(f"Copied solver has {len(copied_solver.splines)} splines")
+```
 
 ## Advanced Usage
 
