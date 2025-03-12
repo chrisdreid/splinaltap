@@ -106,7 +106,7 @@ def create_solver_from_args(args: argparse.Namespace) -> KeyframeSolver:
     """
     # If an input file is provided, load from that
     if args.input_file:
-        return KeyframeKeyframeSolver.load(args.input_file)
+        return KeyframeSolver.load(args.input_file)
     
     # Otherwise, create from keyframes arguments
     solver = KeyframeSolver(name="CommandLine")
@@ -241,7 +241,7 @@ def create_solver_from_args(args: argparse.Namespace) -> KeyframeSolver:
     return solver
 
 
-def visualize_solver(solver: Solver, args: argparse.Namespace) -> None:
+def visualize_solver(solver: KeyframeSolver, args: argparse.Namespace) -> None:
     """Visualize the solver with matplotlib.
     
     Args:
@@ -303,7 +303,7 @@ def visualize_solver(solver: Solver, args: argparse.Namespace) -> None:
         plt.show()
 
 
-def sample_solver(solver: Solver, args: argparse.Namespace) -> Dict[str, Any]:
+def sample_solver(solver: KeyframeSolver, args: argparse.Namespace) -> Dict[str, Any]:
     """Sample the solver at specified points.
     
     Args:
