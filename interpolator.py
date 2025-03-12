@@ -189,7 +189,9 @@ class KeyframeInterpolator:
         
         self.num_indices = float(num_indices) if num_indices is not None else None
         self.time_range = time_range
-        self.keyframes: Dict[float, Tuple[Callable[[float, Dict[str, float]], float], Optional[float], Optional[Tuple[float, float, float, float]]]] = {}
+        # Updated keyframes structure to store method with each keyframe
+        self.keyframes: Dict[float, Tuple[Callable[[float, Dict[str, float]], float], Optional[float], 
+                                         Optional[Tuple[float, float, float, float]], Optional[str]]] = {}
         self.variables: Dict[str, Callable[[float, Dict[str, float]], float]] = {}
         self._precomputed = {}
     
@@ -284,14 +286,18 @@ class KeyframeInterpolator:
         validator.visit(tree)
         return validator.used_vars
     
-    def set_keyframe(self, index: float, value: Union[int, float, str], derivative: Optional[float] = None, control_points: Optional[Tuple[float, float, float, float]] = None):
-        """Set a keyframe with optional derivative and control points.
+    def set_keyframe(self, index: float, value: Union[int, float, str], 
+                 derivative: Optional[float] = None, 
+                 control_points: Optional[Tuple[float, float, float, float]] = None,
+                 method: Optional[str] = None):
+        """Set a keyframe with optional derivative, control points, and method.
         
         Args:
             index: The time index for the keyframe (can be arbitrary time in ms)
             value: The value at this keyframe (can be a number or an expression)
             derivative: Optional derivative at this point (for Hermite interpolation)
             control_points: Optional tuple of control points (x1, y1, x2, y2) for Bezier interpolation
+            method: Optional interpolation method to use for this keyframe
         """
         # In continuous time mode, we accept any time value
         if self.num_indices is not None and not 0 <= index <= self.num_indices:
@@ -301,9 +307,9 @@ class KeyframeInterpolator:
             raise TypeError(f"Keyframe value must be an int, float, or string, got {type(value).__name__}")
             
         if isinstance(value, (int, float)):
-            self.keyframes[index] = (lambda t, channels={}: float(value), derivative, control_points)
+            self.keyframes[index] = (lambda t, channels={}: float(value), derivative, control_points, method)
         else:
-            self.keyframes[index] = (self._parse_expression(value), derivative, control_points)
+            self.keyframes[index] = (self._parse_expression(value), derivative, control_points, method)
             
         self._precomputed.clear()
 
@@ -323,12 +329,17 @@ class KeyframeInterpolator:
 
     def _evaluate_keyframe(self, index: float, t: float, channels: Dict[str, float] = {}) -> float:
         """Evaluate a keyframe at a given t with channel values."""
+        # Debug no longer needed
+        # print(f"Debug: Keyframe at {index} structure: {self.keyframes[index]}")
         return self.keyframes[index][0](t, channels)
 
-    def _get_keyframe_points(self, channels: Dict[str, float] = {}) -> List[Tuple[float, float]]:
-        """Convert keyframes to a list of (index, value) pairs with channel values."""
+    def _get_keyframe_points(self, channels: Dict[str, float] = {}) -> List[Tuple[float, float, Optional[str]]]:
+        """Convert keyframes to a list of (index, value, method) triplets with channel values."""
         result = []
         for index in sorted(self.keyframes):
+            # Debug no longer needed
+            # print(f"Debug: Processing keyframe at {index} in _get_keyframe_points")
+            
             # Evaluate keyframe and convert result to standard Python float
             value = self._evaluate_keyframe(index, index, channels)
             if hasattr(value, 'tolist') or hasattr(value, 'item'):
@@ -340,7 +351,12 @@ class KeyframeInterpolator:
                         value = float(value)
                 except:
                     value = float(value)
-            result.append((float(index), float(value)))
+            # Include the method in the result
+            method = self.keyframes[index][3] if len(self.keyframes[index]) > 3 else None
+            # Debug no longer needed
+            # print(f"Debug: Extracted method for keyframe {index}: {method}")
+            
+            result.append((float(index), float(value), method))
         return result
 
     def get_value(self, t: float, method: str = "linear", channels: Dict[str, float] = {}) -> float:
@@ -369,6 +385,30 @@ class KeyframeInterpolator:
         if method not in methods:
             raise ValueError(f"Method must be one of {list(methods.keys())}")
         
+        # Check if this is a method evaluation query
+        method_query = getattr(self, "_method_query", False)
+        
+        # If this is a method query, use the explicitly requested method without checking keyframes
+        if method_query:
+            return methods[method](self, t, channels)
+            
+        # Otherwise, respect keyframe methods if available
+        if self.keyframes:
+            points = sorted(self.keyframes.keys())
+            
+            # Check if we're within a segment that has specific methods defined
+            for i in range(len(points) - 1):
+                if points[i] <= t <= points[i + 1]:
+                    # Get method for the right keyframe (end of this segment)
+                    kf_method_right = self.keyframes[points[i+1]][3]
+                    
+                    # If the right keyframe has a method, use that for the whole segment
+                    if kf_method_right and kf_method_right in methods:
+                        return methods[kf_method_right](self, t, channels)
+                    # No keyframe method, continue to default method
+                    break
+        
+        # Default to specified method
         return methods[method](self, t, channels)
     
     def sample_range(self, start_time: float, end_time: float, num_samples: int, 

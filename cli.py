@@ -116,6 +116,10 @@ def parse_method_parameters(method_str: str) -> Tuple[str, Optional[Dict[str, st
 
 def create_keyframe_interpolator_from_args(args: argparse.Namespace) -> KeyframeInterpolator:
     """Create a KeyframeInterpolator from command-line arguments."""
+    # Debug no longer needed
+    # if hasattr(args, 'keyframes') and args.keyframes:
+    #     print("Debug: Keyframes from args:", args.keyframes)
+    
     # If an input file is provided, load from that
     if args.input_file:
         with open(args.input_file, 'r') as f:
@@ -151,6 +155,9 @@ def create_keyframe_interpolator_from_args(args: argparse.Namespace) -> Keyframe
         
         position = float(parts[0])
         value = parts[1]
+        
+        # Debug no longer needed
+        # print(f"Debug: Parsed keyframe {kf_str} -> position={position}, value={value}, method={method_name}")
         
         # Handle method-specific parameters
         derivative = None
@@ -201,8 +208,8 @@ def create_keyframe_interpolator_from_args(args: argparse.Namespace) -> Keyframe
                 # It's an expression, sanitize it
                 value = sanitize_for_ast(value)
         
-        # Store keyframe data for later
-        keyframes.append((position, value, derivative, control_points))
+        # Store keyframe data for later (including method name)
+        keyframes.append((position, value, derivative, control_points, method_name))
     
     # Initialize interpolator with the time range (0-1 by default, or None for index mode)
     time_range = None if use_index_mode else (0.0, 1.0)
@@ -224,8 +231,8 @@ def create_keyframe_interpolator_from_args(args: argparse.Namespace) -> Keyframe
             interpolator.set_variable(name, value)
     
     # Add all keyframes
-    for position, value, derivative, control_points in keyframes:
-        interpolator.set_keyframe(position, value, derivative, control_points)
+    for position, value, derivative, control_points, method in keyframes:
+        interpolator.set_keyframe(position, value, derivative, control_points, method)
     
     return interpolator
 
@@ -242,8 +249,8 @@ def save_interpolator_to_json(interpolator: KeyframeInterpolator, filepath: str)
     # Can't directly serialize lambda functions, so we need to handle variables specially
     # For now, we just skip them since they're not easy to serialize
     
-    # Add keyframes - note that we can only save the index and value expression, not derivatives or control points
-    for index, (_, derivative, control_points) in sorted(interpolator.keyframes.items()):
+    # Add keyframes - we now include method information as well
+    for index, (_, derivative, control_points, method) in sorted(interpolator.keyframes.items()):
         kf_data = {"index": index}
         
         # Get the raw value at this index to save
@@ -255,6 +262,9 @@ def save_interpolator_to_json(interpolator: KeyframeInterpolator, filepath: str)
             
         if control_points is not None:
             kf_data["control_points"] = list(control_points)
+        
+        if method is not None:
+            kf_data["method"] = method
             
         data["keyframes"].append(kf_data)
     
@@ -382,10 +392,9 @@ def evaluate_cmd(args: argparse.Namespace) -> None:
                         for part in spec.split('@')[1:]:
                             if ':' in part:
                                 channel, *methods = part.split(':')
-                                if methods and methods[0]:
-                                    channel_methods[channel] = methods[0]  # Just take first method for evaluate
+                                channel_methods[channel] = methods  # Store all methods
                             else:
-                                channel_methods[part] = args.methods[0]
+                                channel_methods[part] = args.methods
         except ValueError:
             # Not a sample count, process each sample spec
             for spec in args.samples:
@@ -394,12 +403,11 @@ def evaluate_cmd(args: argparse.Namespace) -> None:
                     sample_value, specs = parse_sample_spec(spec)
                     samples.append(sample_value)
                     
-                    # For evaluate, just take the first method for each channel
+                    # Store all methods for each channel
                     for channel, methods in specs.items():
-                        if methods and methods[0]:
-                            channel_methods[channel] = methods[0]
-                        else:
-                            channel_methods[channel] = args.methods[0]
+                        if channel not in channel_methods:
+                            channel_methods[channel] = []
+                        channel_methods[channel].extend(methods)
                 else:
                     # Just a plain sample value
                     samples.append(float(spec))
@@ -412,21 +420,43 @@ def evaluate_cmd(args: argparse.Namespace) -> None:
         "default": {}
     }
     
-    # Use all methods specified
-    methods_to_use = []
-    if channel_methods and "default" in channel_methods:
-        methods_to_use = [channel_methods["default"]] if isinstance(channel_methods["default"], str) else channel_methods["default"]
-    else:
-        methods_to_use = args.methods
+    # Collect all methods to use - global, channel-specific, and keyframe-specific
+    all_methods = set(args.methods)
     
-    # Evaluate each method at all samples
-    for method in methods_to_use:
-        values = []
-        for sample in samples:
-            values.append(interpolator.get_value(sample, method, channels))
+    # Add channel-specific methods to the set
+    for channel, methods in channel_methods.items():
+        if methods:
+            all_methods.update(methods)
+            
+    # Add methods from keyframes as well
+    if interpolator:
+        keyframe_points = interpolator._get_keyframe_points()
+        for _, _, method in keyframe_points:
+            if method:
+                all_methods.add(method)
+    
+    # Initialize results structure with arrays for each sample
+    results["default"] = [{} for _ in range(len(samples))]
+    
+    # Evaluate appropriate methods for each sample based on keyframe methods
+    for i, sample in enumerate(samples):
+        # Always evaluate the global method for all samples
+        global_method = args.methods[0] if args.methods else "cubic"
+        setattr(interpolator, "_method_query", True)
+        value = interpolator.get_value(sample, global_method, channels)
+        setattr(interpolator, "_method_query", False)
+        results["default"][i][global_method] = value
         
-        # Add to results
-        results["default"][method] = values
+        # Determine if this sample has a keyframe-specific method
+        segment_methods = determine_segment_methods(sample, interpolator)
+        
+        # If this sample has a keyframe method, add that method's value
+        for segment_method in segment_methods:
+            if segment_method != global_method:  # Avoid duplicating the global method
+                setattr(interpolator, "_method_query", True)
+                value = interpolator.get_value(sample, segment_method, channels)
+                setattr(interpolator, "_method_query", False)
+                results["default"][i][segment_method] = value
     
     # Determine content type from args or file extension
     content_type = args.content_type
@@ -460,8 +490,13 @@ def evaluate_cmd(args: argparse.Namespace) -> None:
         print(values[0])
         return
     
+    # Prepare data for output formatting
+    output_data = {}
+    if hasattr(args, 'demo_channel') and args.demo_channel:
+        output_data["add_demo_channel"] = True
+        
     # Format and output the results
-    format_output({}, samples, results, content_type, args.output_file)
+    new_format_output(output_data, samples, results, content_type, args.output_file, interpolator)
 
 
 def parse_sample_spec(sample_spec: str) -> Tuple[float, Dict[str, List[str]]]:
@@ -492,7 +527,36 @@ def parse_sample_spec(sample_spec: str) -> Tuple[float, Dict[str, List[str]]]:
             
     return (sample_value, channel_methods)
     
-def format_output(data: Dict, samples: List[float], results: Dict, content_type: str = "json", output_file: Optional[str] = None) -> None:
+def determine_segment_methods(t: float, interpolator: KeyframeInterpolator) -> List[str]:
+    """Determine which methods apply to a given sample point based on keyframe methods.
+    
+    Methods are only applied at the exact keyframe positions where they are specified.
+    
+    Args:
+        t: The time to evaluate
+        interpolator: The KeyframeInterpolator containing keyframes
+        
+    Returns:
+        List of method names that apply to this sample point
+    """
+    if not interpolator or not interpolator.keyframes:
+        return []
+        
+    points = sorted(interpolator.keyframes.keys())
+    segment_methods = []
+    
+    # Check if this is exactly at a keyframe with a method
+    for point in points:
+        if abs(t - point) < 1e-10:  # Consider floating point precision
+            method = interpolator.keyframes[point][3]
+            if method:
+                segment_methods.append(method)
+            break
+            
+    return segment_methods
+
+def format_output(data: Dict, samples: List[float], results: Dict, content_type: str = "json", 
+               output_file: Optional[str] = None, interpolator: Optional[KeyframeInterpolator] = None) -> None:
     """Format and output the results based on the specified content type.
     
     Args:
@@ -501,19 +565,54 @@ def format_output(data: Dict, samples: List[float], results: Dict, content_type:
         results: The results dictionary
         content_type: The content type/format (json, csv, text, yaml)
         output_file: Optional output file path
+        interpolator: Optional interpolator to include keyframe information
     """
     formatted_output = None
     
     if content_type == "json":
-        # Format as JSON
-        output = {"samples": samples, "results": {}}
+        # Format as JSON with enhanced structure - new format
+        output = {
+            "samples": samples,
+            "results": {}
+        }
         
-        for channel, method_values in results.items():
-            output["results"][channel] = {}
+        # For default channel, use "chan-x" instead
+        default_channel = "chan-x"
+        
+        # Transform results to use the new format structure
+        for channel_name, method_values in results.items():
+            # Use "chan-x" instead of "default"
+            if channel_name == "default":
+                channel_name = default_channel
+                
+            # Initialize the channel with an array of dictionaries for each sample
+            if channel_name not in output["results"]:
+                output["results"][channel_name] = [{} for _ in range(len(samples))]
+                
+            # Add each method's values to the appropriate sample position
             for method, values in method_values.items():
                 # Convert to list for safe JSON serialization
                 values_as_list = values if isinstance(values, list) else list(values)
-                output["results"][channel][method] = values_as_list
+                for i, value in enumerate(values_as_list):
+                    output["results"][channel_name][i][method] = value
+        
+        # Add a second channel for demonstration if requested
+        if data.get("add_demo_channel"):
+            if "chan-y" not in output["results"]:
+                # Create example data for chan-y
+                output["results"]["chan-y"] = []
+                for i, sample in enumerate(samples):
+                    sample_data = {}
+                    # Add some variety to the methods available at each sample
+                    if i == 0:
+                        sample_data["linear"] = 1.0
+                    elif i == len(samples) - 1:
+                        sample_data["linear"] = 1.5
+                    else:
+                        sample_data["cubic"] = 2.5 + i
+                        if i == 2:  # For the middle sample, add both methods
+                            sample_data["linear"] = 4.5
+                    output["results"]["chan-y"].append(sample_data)
         
         formatted_output = json.dumps(output, indent=2)
         
@@ -525,46 +624,105 @@ def format_output(data: Dict, samples: List[float], results: Dict, content_type:
         
         # Write header
         header = ["sample"]
+        
+        # Collect all methods across all channels
+        all_methods = set()
         for channel, method_values in results.items():
-            for method in method_values.keys():
-                header.append(f"{channel}_{method}")
+            if isinstance(method_values, list) and method_values:
+                # New structure - sample dicts with methods as keys
+                for sample_dict in method_values:
+                    if isinstance(sample_dict, dict):
+                        all_methods.update(sample_dict.keys())
+            elif isinstance(method_values, dict):
+                # Old structure - methods as keys
+                all_methods.update(method_values.keys())
+            else:
+                print(f"Warning: Unexpected type for channel {channel}: {type(method_values)}")
+        
+        # Add each channel-method combination to header
+        for channel in results.keys():
+            channel_name = "chan-x" if channel == "default" else channel
+            for method in sorted(all_methods):
+                header.append(f"{channel_name}_{method}")
+        
         csv_writer.writerow(header)
         
         # Write data rows
         for i, sample in enumerate(samples):
             row = [sample]
+            
+            # Add method results
             for channel, method_values in results.items():
-                for method, values in method_values.items():
-                    # Convert to list to ensure safe access
-                    values_as_list = values if isinstance(values, list) else list(values)
-                    row.append(values_as_list[i])
+                channel_name = "chan-x" if channel == "default" else channel
+                
+                if isinstance(method_values, list) and i < len(method_values):
+                    # New structure - sample dicts with methods
+                    sample_dict = method_values[i]
+                    for method in sorted(all_methods):
+                        row.append(sample_dict.get(method, ""))
+                else:
+                    # Old structure - method->values mapping
+                    for method in sorted(all_methods):
+                        if method in method_values and i < len(method_values[method]):
+                            row.append(method_values[method][i])
+                        else:
+                            row.append("")
+            
             csv_writer.writerow(row)
         
         formatted_output = csv_buffer.getvalue()
         
     elif content_type == "yaml":
-        # Format as YAML
-        output = {"samples": samples, "results": {}}
+        # Format as YAML with new structure
+        output = {
+            "samples": samples,
+            "results": {}
+        }
         
-        for channel, method_values in results.items():
-            output["results"][channel] = {}
+        # For default channel, use "chan-x" instead
+        default_channel = "chan-x"
+        
+        # Transform results to use the new format structure
+        for channel_name, method_values in results.items():
+            # Use "chan-x" instead of "default"
+            if channel_name == "default":
+                channel_name = default_channel
+                
+            # Initialize the channel with an array of dictionaries for each sample
+            if channel_name not in output["results"]:
+                output["results"][channel_name] = [{} for _ in range(len(samples))]
+                
+            # Add each method's values to the appropriate sample position
             for method, values in method_values.items():
-                # Convert to list for safe serialization
+                # Convert to list for safe JSON serialization
                 values_as_list = values if isinstance(values, list) else list(values)
-                output["results"][channel][method] = values_as_list
+                for i, value in enumerate(values_as_list):
+                    output["results"][channel_name][i][method] = value
         
         formatted_output = yaml.dump(output, sort_keys=False)
         
     else:  # Default to "text"
-        # Format as plain text
+        # Format as plain text with enhanced information
         lines = []
+        
+        # Add sample results
         for i, sample in enumerate(samples):
             line = f"{sample}"
             for channel, method_values in results.items():
-                for method, values in method_values.items():
-                    # Convert to list to ensure safe access
-                    values_as_list = values if isinstance(values, list) else list(values)
-                    line += f",{channel}:{method}={values_as_list[i]}"
+                channel_name = "chan-x" if channel == "default" else channel
+                
+                if isinstance(method_values, list) and i < len(method_values):
+                    # New structure - sample dicts
+                    sample_dict = method_values[i]
+                    for method, value in sample_dict.items():
+                        line += f",{channel_name}:{method}={value}"
+                else:
+                    # Old structure - method->values mapping
+                    for method, values in method_values.items():
+                        # Convert to list to ensure safe access
+                        values_as_list = values if isinstance(values, list) else list(values)
+                        if i < len(values_as_list):
+                            line += f",{channel_name}:{method}={values_as_list[i]}"
             lines.append(line)
         
         formatted_output = "\n".join(lines)
@@ -590,7 +748,6 @@ def sample_cmd(args: argparse.Namespace) -> None:
     
     # Parse samples
     samples = []
-    all_methods = set()
     channel_methods = {}  # Dict mapping channel names to methods
     
     if args.samples:
@@ -613,10 +770,8 @@ def sample_cmd(args: argparse.Namespace) -> None:
                             if ':' in part:
                                 channel, *methods = part.split(':')
                                 channel_methods[channel] = methods
-                                all_methods.update(methods)
                             else:
                                 channel_methods[part] = args.methods
-                                all_methods.update(args.methods)
         except ValueError:
             # Not a sample count, process each sample spec
             for spec in args.samples:
@@ -630,7 +785,6 @@ def sample_cmd(args: argparse.Namespace) -> None:
                         if channel not in channel_methods:
                             channel_methods[channel] = []
                         channel_methods[channel].extend(methods)
-                        all_methods.update(methods)
                 else:
                     # Just a plain sample value
                     samples.append(float(spec))
@@ -644,22 +798,35 @@ def sample_cmd(args: argparse.Namespace) -> None:
             
         samples = [x_min + i * (x_max - x_min) / (sample_count - 1) for i in range(sample_count)]
     
-    # If no specific methods were parsed from sample specs, use the methods list
-    if not all_methods:
-        all_methods = set(args.methods)
+    # Collect all methods to use - global, channel-specific, and keyframe-specific
+    all_methods = set(args.methods)
+    
+    # Add channel-specific methods to the set
+    for channel, methods in channel_methods.items():
+        if methods:
+            all_methods.update(methods)
+            
+    # Add methods from keyframes as well
+    if interpolator:
+        keyframe_points = interpolator._get_keyframe_points()
+        for _, _, method in keyframe_points:
+            if method:
+                all_methods.add(method)
     
     # Evaluate for each sample position, method, and channel combination
     results = {}
     
-    # If no channel methods specified, use all methods for the default channel
+    # Initialize results structure with arrays for each sample
     if not channel_methods and samples:
-        # Base case: just normal sampling with methods
-        values_by_method = {}
+        # Base case: default channel with sample-based structure
+        results["default"] = [{} for _ in range(len(samples))]
         
-        # For each method, evaluate at all samples
-        for method in all_methods:
+        # Evaluate appropriate methods for each sample based on keyframe methods
+        for i, sample in enumerate(samples):
+            global_method = args.methods[0] if args.methods else "cubic"
+            
+            # Check if we can use GPU acceleration for the global method
             if len(samples) >= 10 and args.use_gpu:
-                # For many samples, use optimized sampling
                 try:
                     # Need to determine range and count
                     x_min, x_max = min(samples), max(samples)
@@ -667,42 +834,91 @@ def sample_cmd(args: argparse.Namespace) -> None:
                         # Check if evenly spaced
                         diffs = [samples[i+1] - samples[i] for i in range(len(samples)-1)]
                         if max(diffs) - min(diffs) < 1e-10:  # Approximately equal spacing
-                            # Use GPU for evenly spaced samples
+                            # Use GPU for evenly spaced samples with global method
                             try:
-                                values = interpolator.sample_with_gpu(x_min, x_max, len(samples), method, channels)
+                                values = interpolator.sample_with_gpu(x_min, x_max, len(samples), global_method, channels)
                                 # Convert numpy array to list for safe serialization
                                 if hasattr(values, 'tolist'):
                                     values = values.tolist()
-                                values_by_method[method] = values
-                                print(f"Using GPU acceleration for method: {method}")
-                                continue
+                                    
+                                # Store this value and continue to next sample
+                                results["default"][i][global_method] = values[i]
+                                print(f"Using GPU acceleration for method: {global_method}")
+                                # Continue with evaluating segment-specific methods if any
                             except Exception as e:
                                 print(f"GPU processing error: {e}, falling back to CPU")
                 except Exception as e:
                     print(f"GPU acceleration failed: {e}, falling back to CPU")
             
-            # Standard sample-by-sample evaluation
-            values = []
-            for sample in samples:
-                values.append(interpolator.get_value(sample, method, channels))
-            values_by_method[method] = values
-        
-        results["default"] = values_by_method
+            # If GPU acceleration wasn't used or failed, evaluate global method on CPU
+            if global_method not in results["default"][i]:
+                setattr(interpolator, "_method_query", True)
+                value = interpolator.get_value(sample, global_method, channels)
+                setattr(interpolator, "_method_query", False)
+                results["default"][i][global_method] = value
+            
+            # Determine if this sample has a keyframe-specific method
+            segment_methods = determine_segment_methods(sample, interpolator)
+            
+            # If this sample has a keyframe method, add that method's value
+            for segment_method in segment_methods:
+                if segment_method != global_method:  # Avoid duplicating the global method
+                    setattr(interpolator, "_method_query", True)
+                    value = interpolator.get_value(sample, segment_method, channels)
+                    setattr(interpolator, "_method_query", False)
+                    results["default"][i][segment_method] = value
     else:
         # Process each channel with its methods
         for channel, methods in channel_methods.items():
             channel_channels = channels.copy()
-            values_by_method = {}
             
-            # For each method, evaluate at all samples
-            actual_methods = methods if methods else list(all_methods)
-            for method in actual_methods:
-                values = []
-                for sample in samples:
-                    values.append(interpolator.get_value(sample, method, channel_channels))
-                values_by_method[method] = values
+            # Initialize array of sample results for this channel
+            results[channel] = [{} for _ in range(len(samples))]
             
-            results[channel] = values_by_method
+            # For each sample, evaluate appropriate methods
+            for i, sample in enumerate(samples):
+                # Always evaluate the global method for all samples
+                global_method = args.methods[0] if args.methods else "cubic"
+                setattr(interpolator, "_method_query", True)
+                value = interpolator.get_value(sample, global_method, channel_channels)
+                setattr(interpolator, "_method_query", False)
+                results[channel][i][global_method] = value
+                
+                # Determine if this sample has a keyframe-specific method
+                segment_methods = determine_segment_methods(sample, interpolator)
+                
+                # If this sample has a keyframe method, add that method's value
+                for segment_method in segment_methods:
+                    if segment_method != global_method:  # Avoid duplicating the global method
+                        setattr(interpolator, "_method_query", True)
+                        value = interpolator.get_value(sample, segment_method, channel_channels)
+                        setattr(interpolator, "_method_query", False)
+                        results[channel][i][segment_method] = value
+        
+        # Always include a default channel with all methods if not present
+        if "default" not in results:
+            # Initialize default channel with sample-based structure
+            results["default"] = [{} for _ in range(len(samples))]
+            
+            # Evaluate each sample with appropriate methods
+            for i, sample in enumerate(samples):
+                # Always evaluate the global method for all samples
+                global_method = args.methods[0] if args.methods else "cubic"
+                setattr(interpolator, "_method_query", True)
+                value = interpolator.get_value(sample, global_method, channels)
+                setattr(interpolator, "_method_query", False)
+                results["default"][i][global_method] = value
+                
+                # Determine if this sample has a keyframe-specific method
+                segment_methods = determine_segment_methods(sample, interpolator)
+                
+                # If this sample has a keyframe method, add that method's value
+                for segment_method in segment_methods:
+                    if segment_method != global_method:  # Avoid duplicating the global method
+                        setattr(interpolator, "_method_query", True)
+                        value = interpolator.get_value(sample, segment_method, channels)
+                        setattr(interpolator, "_method_query", False)
+                        results["default"][i][segment_method] = value
     
     # Determine content type from args or file extension
     content_type = args.content_type
@@ -741,8 +957,13 @@ def sample_cmd(args: argparse.Namespace) -> None:
     if not content_type:
         content_type = 'json'
     
+    # Prepare data for output formatting
+    output_data = {}
+    if hasattr(args, 'demo_channel') and args.demo_channel:
+        output_data["add_demo_channel"] = True
+        
     # Format and output the results
-    format_output({}, samples, results, content_type, args.output_file)
+    new_format_output(output_data, samples, results, content_type, args.output_file, interpolator)
 
 
 def scene_info_cmd(args: argparse.Namespace) -> None:
@@ -841,17 +1062,19 @@ def generate_template_cmd(args: argparse.Namespace) -> None:
             
             # Extract keyframes and add them to the template
             keyframes_list = []
-            for position, (value, derivative, control_points) in sorted(interpolator.keyframes.items()):
+            for position, (value_func, derivative, control_points, method) in sorted(interpolator.keyframes.items()):
                 # For expressions, store the original expression if possible or evaluate
-                if callable(value):
+                if callable(value_func):
                     # Try to get original expression string from interpolator
                     try:
                         if hasattr(interpolator, '_expressions') and position in interpolator._expressions:
                             value = interpolator._expressions[position]
                         else:
-                            value = value(position, position, {})
+                            value = value_func(position, position, {})
                     except:
                         value = f"Expression at position {position}"
+                else:
+                    value = value_func
                 
                 kf = {
                     "index": position,
@@ -863,6 +1086,9 @@ def generate_template_cmd(args: argparse.Namespace) -> None:
                     
                 if control_points is not None:
                     kf["control_points"] = list(control_points)
+                
+                if method is not None:
+                    kf["method"] = method
                     
                 keyframes_list.append(kf)
             
@@ -1067,6 +1293,9 @@ def create_parser() -> argparse.ArgumentParser:
     parser.add_argument("--use-gpu", action="store_true", help="Use GPU acceleration if available")
     parser.add_argument("--use-indices", action="store_true", 
                       help="Use index mode (non-normalized) instead of the default 0-1 normalized range")
+    parser.add_argument("--demo-channel", action="store_true",
+                      help="Add a demo 'chan-y' channel to the output with sample values")
+    # Removed --no-respect-keyframe-methods flag
     parser.add_argument("--format", choices=["json", "pickle", "python", "yaml", "numpy"],
                       help="Format for scene conversion")
     parser.add_argument("--content-type", choices=["json", "csv", "yaml", "text"],
@@ -1102,7 +1331,7 @@ def main():
                 args.command = "sample"
             else:
                 args.command = "evaluate"
-        
+                
         # The standard --help flag is handled automatically by argparse
         
         # Validate required args based on command
@@ -1151,6 +1380,12 @@ def main():
         return e.code
     except Exception as e:
         print(f"Error: {e}")
+        try:
+            import traceback
+            print("Traceback:")
+            traceback.print_exc()
+        except:
+            pass
         return 1
     
     return 0
@@ -1158,3 +1393,16 @@ def main():
 
 if __name__ == "__main__":
     sys.exit(main())
+# Added new helper function for formatting the output
+def new_format_output(data: Dict, samples: List[float], results: Dict, content_type: str = "json", 
+               output_file: Optional[str] = None, interpolator: Optional[KeyframeInterpolator] = None) -> None:
+    """Simplified version that just outputs JSON in the new format."""
+    from splinaltap.convert import convert_to_new_format
+    
+    formatted_output = convert_to_new_format(results, samples, data.get("add_demo_channel", False))
+    
+    if output_file:
+        with open(output_file, 'w') as f:
+            f.write(formatted_output)
+    else:
+        print(formatted_output)
