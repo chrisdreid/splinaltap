@@ -1,6 +1,9 @@
 import json
 
-def convert_to_new_format(results, samples, demo_channel=False):
+# Format version for compatibility checking
+FORMAT_VERSION = "1.0"
+
+def convert_to_new_format(results, samples):
     """Convert from the old format to the new format.
     
     In this updated version, we don't include the interpolation method in the output
@@ -8,6 +11,7 @@ def convert_to_new_format(results, samples, demo_channel=False):
     used to generate it.
     """
     output = {
+        "version": FORMAT_VERSION,
         "samples": samples,
         "results": {}
     }
@@ -42,16 +46,5 @@ def convert_to_new_format(results, samples, demo_channel=False):
                 # Add each value directly
                 for value in method_values:
                     output["results"][channel_key].append(value)
-    
-    # Add demo channel if requested
-    if demo_channel and "chan-y" not in output["results"]:
-        output["results"]["chan-y"] = []
-        for i in range(len(samples)):
-            if i == 0:
-                output["results"]["chan-y"].append(1.0)
-            elif i == len(samples) - 1:
-                output["results"]["chan-y"].append(1.5)
-            else:
-                output["results"]["chan-y"].append(2.5 + i)
     
     return json.dumps(output, indent=2)

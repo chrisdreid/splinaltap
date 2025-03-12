@@ -490,14 +490,9 @@ def evaluate_cmd(args: argparse.Namespace) -> None:
         print(values[0])
         return
     
-    # Prepare data for output formatting
-    output_data = {}
-    if hasattr(args, 'demo_channel') and args.demo_channel:
-        output_data["add_demo_channel"] = True
-        
     # Format and output the results
     from splinaltap.convert import convert_to_new_format
-    formatted_output = convert_to_new_format(results, samples, output_data.get("add_demo_channel", False))
+    formatted_output = convert_to_new_format(results, samples)
     
     if args.output_file:
         with open(args.output_file, 'w') as f:
@@ -964,14 +959,9 @@ def sample_cmd(args: argparse.Namespace) -> None:
     if not content_type:
         content_type = 'json'
     
-    # Prepare data for output formatting
-    output_data = {}
-    if hasattr(args, 'demo_channel') and args.demo_channel:
-        output_data["add_demo_channel"] = True
-        
     # Format and output the results
     from splinaltap.convert import convert_to_new_format
-    formatted_output = convert_to_new_format(results, samples, output_data.get("add_demo_channel", False))
+    formatted_output = convert_to_new_format(results, samples)
     
     if args.output_file:
         with open(args.output_file, 'w') as f:
@@ -1307,8 +1297,7 @@ def create_parser() -> argparse.ArgumentParser:
     parser.add_argument("--use-gpu", action="store_true", help="Use GPU acceleration if available")
     parser.add_argument("--use-indices", action="store_true", 
                       help="Use index mode (non-normalized) instead of the default 0-1 normalized range")
-    parser.add_argument("--demo-channel", action="store_true",
-                      help="Add a demo 'chan-y' channel to the output with sample values")
+    # Removed --demo-channel option
     # Removed --no-respect-keyframe-methods flag
     parser.add_argument("--format", choices=["json", "pickle", "python", "yaml", "numpy"],
                       help="Format for scene conversion")
@@ -1333,6 +1322,11 @@ def main():
     try:
         # Parse arguments
         args = parser.parse_args()
+        
+        # If no arguments were provided, print help and exit
+        if len(sys.argv) == 1:
+            parser.print_help()
+            return 0
         
         # If no command specified, decide whether to evaluate or sample based on parameters
         if not args.command:

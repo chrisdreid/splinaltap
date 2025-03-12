@@ -8,6 +8,9 @@ import pickle
 from typing import Dict, List, Optional, Union, Any, Tuple
 import warnings
 
+# Scene file format version for compatibility checking
+SCENE_FORMAT_VERSION = "1.0"
+
 from .interpolator import KeyframeInterpolator
 
 try:
@@ -118,18 +121,25 @@ class Scene:
         }
         
         # Add keyframes
-        for index, (_, derivative, control_points) in sorted(interpolator.keyframes.items()):
+        for index, keyframe_data in sorted(interpolator.keyframes.items()):
             kf_data = {"index": index}
             
             # Try to get the value or expression
             value = interpolator._evaluate_keyframe(index, index)
             kf_data["value"] = value
             
-            if derivative is not None:
-                kf_data["derivative"] = derivative
-                
-            if control_points is not None:
-                kf_data["control_points"] = list(control_points)
+            # Unpack the keyframe data - ensuring backward compatibility
+            if len(keyframe_data) >= 3:
+                _, derivative, control_points = keyframe_data[:3]
+                if derivative is not None:
+                    kf_data["derivative"] = derivative
+                    
+                if control_points is not None:
+                    kf_data["control_points"] = list(control_points)
+            
+            # Add method if available (4th element in the tuple)
+            if len(keyframe_data) >= 4 and keyframe_data[3] is not None:
+                kf_data["method"] = keyframe_data[3]
                 
             data["keyframes"].append(kf_data)
             
@@ -163,6 +173,7 @@ class Scene:
                 
         # Prepare the scene data
         scene_data = {
+            "version": SCENE_FORMAT_VERSION,
             "name": self.name,
             "metadata": self.metadata,
             "interpolators": {}
@@ -206,13 +217,22 @@ class Scene:
                     f.write(")\n")
                     
                     # Add keyframes
-                    for index, (_, derivative, control_points) in sorted(interpolator.keyframes.items()):
+                    for index, keyframe_data in sorted(interpolator.keyframes.items()):
                         value = interpolator._evaluate_keyframe(index, index)
                         f.write(f"    {name}.set_keyframe({index}, {repr(value)}")
-                        if derivative is not None or control_points is not None:
-                            f.write(f", derivative={repr(derivative)}")
-                        if control_points is not None:
-                            f.write(f", control_points={repr(control_points)}")
+                        
+                        # Unpack the keyframe data - ensuring backward compatibility
+                        if len(keyframe_data) >= 3:
+                            _, derivative, control_points = keyframe_data[:3]
+                            if derivative is not None:
+                                f.write(f", derivative={repr(derivative)}")
+                            if control_points is not None:
+                                f.write(f", control_points={repr(control_points)}")
+                        
+                        # Add method if available (4th element in the tuple)
+                        if len(keyframe_data) >= 4 and keyframe_data[3] is not None:
+                            f.write(f", method={repr(keyframe_data[3])}")
+                            
                         f.write(")\n")
                     
                     # Add to scene
@@ -307,6 +327,12 @@ class Scene:
         else:
             raise ValueError(f"Unsupported format: {format}")
             
+        # Check version if available
+        if "version" in scene_data:
+            file_version = scene_data["version"]
+            if file_version != SCENE_FORMAT_VERSION:
+                warnings.warn(f"Scene file version ({file_version}) does not match current version ({SCENE_FORMAT_VERSION}). Some features may not work correctly.")
+        
         # Create and populate the scene
         scene = cls(name=scene_data.get("name", "Untitled"))
         
