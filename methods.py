@@ -14,6 +14,7 @@ def nearest_neighbor(self, t: float, channels: Dict[str, float] = {}) -> float:
     if not self.keyframes:
         raise ValueError("No keyframes defined")
     points = self._get_keyframe_points(channels)
+    # Find closest point by time, return the value (second element)
     return min(points, key=lambda p: abs(p[0] - t))[1]
 
 def linear_interpolate(self, t: float, channels: Dict[str, float] = {}) -> float:
@@ -26,8 +27,9 @@ def linear_interpolate(self, t: float, channels: Dict[str, float] = {}) -> float
     if t >= points[-1][0]:
         return points[-1][1]
     for i in range(len(points) - 1):
-        x0, y0 = points[i]
-        x1, y1 = points[i + 1]
+        # Unpack x, y values (point is now (index, value, method))
+        x0, y0, _ = points[i]
+        x1, y1, _ = points[i + 1]
         if x0 <= t <= x1:
             return y0 + (y1 - y0) * (t - x0) / (x1 - x0)
     raise ValueError(f"Time {t} out of bounds")
@@ -37,6 +39,7 @@ def polynomial_interpolate(self, t: float, channels: Dict[str, float] = {}) -> f
     if not self.keyframes:
         raise ValueError("No keyframes defined")
     points = self._get_keyframe_points(channels)
+    # Extract x and y values, ignoring the method
     x = [p[0] for p in points]
     y = [p[1] for p in points]
     result = 0.0
@@ -62,19 +65,21 @@ def quadratic_spline(self, t: float, channels: Dict[str, float] = {}) -> float:
 
     cache_key = f"quadratic_coeffs_{hash(tuple(channels.items()))}"
     if cache_key not in self._precomputed:
+        # Extract x and y values, ignoring the method
         x = [p[0] for p in points]
         y = [p[1] for p in points]
         n = len(points) - 1
         coeffs = []
         for i in range(n):
-            x0, y0 = points[i]
-            x1, y1 = points[i + 1]
+            # Unpack x, y values (point is now (index, value, method))
+            x0, y0, _ = points[i]
+            x1, y1, _ = points[i + 1]
             if i == 0:
                 a = 0
                 b = (y1 - y0) / (x1 - x0)
                 c = y0
             else:
-                x_prev, y_prev = points[i - 1]
+                x_prev, y_prev, _ = points[i - 1]
                 b_prev = coeffs[-1][1]
                 a = (y1 - y0 - b_prev * (x1 - x0)) / ((x1 - x0) ** 2)
                 b = b_prev
@@ -94,7 +99,7 @@ def hermite_interpolate(self, t: float, channels: Dict[str, float] = {}) -> floa
     """Hermite cubic interpolation with optional derivatives."""
     if not self.keyframes:
         raise ValueError("No keyframes defined")
-    points = [(x, self._evaluate_keyframe(x, x, channels), d or 0.0) for x, (f, d, _) in sorted(self.keyframes.items())]
+    points = [(x, self._evaluate_keyframe(x, x, channels), d or 0.0) for x, (f, d, _, _) in sorted(self.keyframes.items())]
     if len(points) < 2:
         raise ValueError("Hermite requires at least 2 keyframes")
     if t <= points[0][0]:
@@ -120,7 +125,7 @@ def bezier_interpolate(self, t: float, channels: Dict[str, float] = {}) -> float
     if not self.keyframes:
         raise ValueError("No keyframes defined")
     points = [(x, self._evaluate_keyframe(x, x, channels), cp or (x + 0.1, self._evaluate_keyframe(x, x, channels) + 0.1, x + 0.2, self._evaluate_keyframe(x, x, channels) + 0.2)) 
-              for x, (f, _, cp) in sorted(self.keyframes.items())]
+              for x, (f, _, cp, _) in sorted(self.keyframes.items())]
     if len(points) < 2:
         raise ValueError("Bezier requires at least 2 keyframes")
     if t <= points[0][0]:
@@ -148,6 +153,7 @@ def gaussian_interpolate(self, t: float, channels: Dict[str, float] = {}) -> flo
     
     cache_key = f"gaussian_weights_{hash(tuple(channels.items()))}"
     if cache_key not in self._precomputed:
+        # Extract x and y values, ignoring the method
         x = np.array([p[0] for p in points])
         y = np.array([p[1] for p in points])
         sigma = 1.0
@@ -173,6 +179,7 @@ def pchip_interpolate(self, t: float, channels: Dict[str, float] = {}) -> float:
 
     cache_key = f"pchip_coeffs_{hash(tuple(channels.items()))}"
     if cache_key not in self._precomputed:
+        # Extract x and y values, ignoring the method
         x = [p[0] for p in points]
         y = [p[1] for p in points]
         n = len(points) - 1
@@ -213,6 +220,7 @@ def cubic_spline(self, t: float, channels: Dict[str, float] = {}) -> float:
         return points[-1][1]
 
     n = len(points) - 1
+    # Extract x and y values, ignoring the method
     x = [p[0] for p in points]
     y = [p[1] for p in points]
     h = [x[i + 1] - x[i] for i in range(n)]

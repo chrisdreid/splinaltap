@@ -2,11 +2,20 @@
 Visualization tools for the splinaltap library.
 """
 
+from .backends import BackendManager
+
 try:
     import matplotlib.pyplot as plt
     has_matplotlib = True
 except ImportError:
     has_matplotlib = False
+
+# Check if NumPy is available
+try:
+    import numpy as np
+    HAS_NUMPY = True
+except ImportError:
+    HAS_NUMPY = False
 
 def plot_interpolation_comparison(interpolator, t_values, methods=None, channels=None, title="Interpolation Methods Comparison"):
     """
@@ -42,11 +51,34 @@ def plot_interpolation_comparison(interpolator, t_values, methods=None, channels
     keyframe_t = [p[0] for p in keyframe_points]
     keyframe_values = [p[1] for p in keyframe_points]
 
+    # Convert to standard Python lists first to avoid backend issues
+    t_values_list = [float(t) for t in t_values]
+    
+    # Convert lists to numpy for matplotlib
+    if HAS_NUMPY:
+        t_values_np = np.array(t_values_list)
+    else:
+        t_values_np = t_values_list
+
     fig = plt.figure(figsize=(12, 8))
     for method in methods:
         try:
-            values = [interpolator.get_value(t, method, channels) for t in t_values]
-            plt.plot(t_values, values, label=method.capitalize())
+            # Sample values using current backend
+            values = interpolator.sample_range(min(t_values_list), max(t_values_list), len(t_values_list), method, channels)
+            
+            # Convert to standard Python list first
+            if hasattr(values, 'tolist'):
+                values_list = values.tolist()
+            else:
+                values_list = [float(v) for v in values]
+                
+            # Convert to numpy for matplotlib
+            if HAS_NUMPY:
+                values_np = np.array(values_list)
+            else:
+                values_np = values_list
+            
+            plt.plot(t_values_np, values_np, label=method.capitalize())
         except Exception as e:
             print(f"Skipping {method} due to: {e}")
 
@@ -87,10 +119,32 @@ def plot_single_interpolation(interpolator, t_values, method="cubic", channels=N
     keyframe_t = [p[0] for p in keyframe_points]
     keyframe_values = [p[1] for p in keyframe_points]
     
-    values = [interpolator.get_value(t, method, channels) for t in t_values]
+    # Convert to standard Python lists first to avoid backend issues
+    t_values_list = [float(t) for t in t_values]
+    
+    # Convert lists to numpy for matplotlib
+    if HAS_NUMPY:
+        t_values_np = np.array(t_values_list)
+    else:
+        t_values_np = t_values_list
+    
+    # Sample values using current backend
+    values = interpolator.sample_range(min(t_values_list), max(t_values_list), len(t_values_list), method, channels)
+    
+    # Convert to standard Python list first
+    if hasattr(values, 'tolist'):
+        values_list = values.tolist()
+    else:
+        values_list = [float(v) for v in values]
+        
+    # Convert to numpy for matplotlib
+    if HAS_NUMPY:
+        values_np = np.array(values_list)
+    else:
+        values_np = values_list
     
     fig = plt.figure(figsize=(12, 6))
-    plt.plot(t_values, values, label=method.capitalize())
+    plt.plot(t_values_np, values_np, label=method.capitalize())
     plt.scatter(keyframe_t, keyframe_values, color='black', s=100, 
                 facecolors='none', edgecolors='black', label='Keyframes')
     
