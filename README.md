@@ -931,6 +931,51 @@ float linearInterpolate(float t) {
 }
 ```
 
+## Random Functions
+
+SplinalTap provides built-in random value generation in expressions through two functions:
+
+```python
+# Random float between 0 and 1
+channel.add_keyframe(at=0.5, value="rand()")
+
+# Random integer between min and max (inclusive)
+channel.add_keyframe(at=0.5, value="randint([1, 10])")
+
+# Random integer between 0 and max (inclusive)
+channel.add_keyframe(at=0.5, value="randint(5)")
+```
+
+These functions are evaluated each time `get_value()` is called, generating new random values with each evaluation. This makes them ideal for:
+
+1. **Noise Generation**: Create random noise patterns by evaluating at many points
+   ```python
+   noise_channel.add_keyframe(at=0.0, value="rand() * 2 - 1")  # Random values from -1 to 1
+   ```
+
+2. **Quantized Effects**: Create stepped or quantized random values
+   ```python
+   # Random values of 0, 0.2, 0.4, 0.6, 0.8, or 1.0
+   quant_channel.add_keyframe(at=0.0, value="randint([0, 5]) * 0.2")
+   ```
+
+3. **Variation**: Add controlled randomness to otherwise deterministic animations
+   ```python
+   # Base value with random variation
+   channel.add_keyframe(at=0.5, value="sin(t*pi) + rand() * 0.1")  # Add jitter
+   ```
+
+4. **Random Selection**: Choose randomly between discrete options
+   ```python
+   # Select from 0, 5, or 10
+   channel.add_keyframe(at=0.5, value="randint([0, 2]) * 5")
+   ```
+
+Note that these functions generate new values each time they're evaluated, which means:
+- The same position may return different values in successive calls
+- Channels with random functions will appear different each time they're sampled
+- For consistent random values, you would need to set a seed outside of SplinalTap
+
 ## Performance Considerations
 
 Splinaltap uses a tiered approach to performance optimization, automatically choosing the best available implementation based on your hardware and installed packages:

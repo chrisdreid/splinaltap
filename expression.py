@@ -49,6 +49,26 @@ class ExpressionEvaluator:
         # Variables that can be used in expressions
         self.variables = variables or {}
     
+    def evaluate(self, expr: str, position: float = 0.0, variables: Dict[str, Any] = None) -> float:
+        """Evaluate an expression at a given position with optional variables.
+        
+        Args:
+            expr: The expression string to evaluate
+            position: The position (t value) to evaluate at
+            variables: Optional dictionary of variable values to use
+            
+        Returns:
+            The result of evaluating the expression
+        """
+        expr_func = self.parse_expression(expr)
+        channels = variables or {}
+        result = expr_func(position, channels)
+        
+        # Convert NumPy arrays to Python scalar values
+        if hasattr(result, 'item') and hasattr(result, 'size') and result.size == 1:
+            return result.item()
+        return result
+    
     def parse_expression(self, expr: str) -> Callable[[float, Dict[str, Any]], float]:
         """Parse an expression into a safe lambda function using AST transformation.
         
@@ -124,7 +144,9 @@ class ExpressionEvaluator:
                     # Comparison operators
                     ast.IfExp, ast.Compare, ast.Eq, ast.Mod, ast.Lt, ast.Gt, ast.LtE, ast.GtE, ast.NotEq,
                     # Logical operators
-                    ast.BoolOp, ast.And, ast.Or
+                    ast.BoolOp, ast.And, ast.Or,
+                    # Collection types
+                    ast.List, ast.Tuple
                 }
                 
                 # Common variable names allowed in expressions
@@ -176,6 +198,16 @@ class ExpressionEvaluator:
         def visit_Constant(self, node):
             # For constant values, just return the value
             return lambda ctx: node.value
+            
+        def visit_List(self, node):
+            # Handle list literals
+            elements = [self.visit(elt) for elt in node.elts]
+            return lambda ctx: [element(ctx) for element in elements]
+            
+        def visit_Tuple(self, node):
+            # Handle tuple literals
+            elements = [self.visit(elt) for elt in node.elts]
+            return lambda ctx: tuple(element(ctx) for element in elements)
         
         def visit_Name(self, node):
             # Handle variable names
@@ -194,7 +226,13 @@ class ExpressionEvaluator:
                     return lambda ctx: var_func
             else:
                 # For t and channel variables
-                return lambda ctx: ctx.get(name, 0)
+                def dynamic_ctx_lookup(ctx):
+                    value = ctx.get(name, 0)
+                    # Convert NumPy arrays to Python scalar values
+                    if hasattr(value, 'item') and hasattr(value, 'size') and value.size == 1:
+                        return value.item()
+                    return value
+                return dynamic_ctx_lookup
         
         def visit_BinOp(self, node):
             # Handle binary operations
