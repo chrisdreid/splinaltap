@@ -34,7 +34,8 @@ class Spline:
         self, 
         name: str, 
         interpolation: str = "cubic",
-        min_max: Optional[Tuple[float, float]] = None
+        min_max: Optional[Tuple[float, float]] = None,
+        replace: bool = False
     ) -> Channel:
         """Add a new channel to this spline.
         
@@ -42,11 +43,12 @@ class Spline:
             name: The channel name
             interpolation: Default interpolation method for this channel
             min_max: Optional min/max range constraints for this channel's values
+            replace: If True, replace existing channel with the same name
             
         Returns:
             The newly created channel
         """
-        if name in self.channels:
+        if name in self.channels and not replace:
             raise ValueError(f"Channel '{name}' already exists in this spline")
             
         # Create a new channel with the shared variables

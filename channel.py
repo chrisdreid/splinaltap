@@ -80,7 +80,7 @@ class Channel:
         interpolation: Optional[str] = None,
         control_points: Optional[List[float]] = None,
         derivative: Optional[float] = None
-    ) -> None:
+    ) -> Keyframe:
         """Add a keyframe to this channel.
         
         Args:
@@ -89,6 +89,9 @@ class Channel:
             interpolation: Optional interpolation method override for this keyframe
             control_points: Optional control points for bezier interpolation
             derivative: Optional derivative value for hermite interpolation
+            
+        Returns:
+            The created keyframe
         """
         # Validate position range
         if not 0 <= at <= 1:
@@ -140,6 +143,24 @@ class Channel:
             else:
                 # Append at the end if position is greater than all existing keyframes
                 self.keyframes.append(keyframe)
+        
+        return keyframe
+                
+    def remove_keyframe(self, at: float) -> None:
+        """Remove a keyframe at the specified position.
+        
+        Args:
+            at: The position of the keyframe to remove
+            
+        Raises:
+            ValueError: If no keyframe exists at the specified position
+        """
+        for i, kf in enumerate(self.keyframes):
+            if abs(kf.at - at) < 1e-6:  # Compare with small epsilon for float comparison
+                self.keyframes.pop(i)
+                return
+        
+        raise ValueError(f"No keyframe exists at position {at}")
                 
     def get_value(self, at: float, channels: Dict[str, float] = None) -> float:
         """Get the interpolated value at the specified position.
@@ -181,6 +202,12 @@ class Channel:
             
             # Call the appropriate interpolation method
             result = self._interpolate(method, at, left_kf, right_kf, channels)
+        
+        
+        # Apply min/max clamping to the final result if specified
+        if self.min_max is not None:
+            min_val, max_val = self.min_max
+            result = max(min_val, min(max_val, result))
         
         # Ensure we always return a Python scalar value
         if hasattr(result, 'item') and hasattr(result, 'size') and result.size == 1:
@@ -394,3 +421,15 @@ class Channel:
             result.append((pos, val))
             
         return result
+        
+    def sample(self, positions: List[float], channels: Dict[str, float] = None) -> List[float]:
+        """Sample the channel at multiple positions.
+        
+        Args:
+            positions: List of positions to sample at
+            channels: Optional channel values to use in expressions
+            
+        Returns:
+            List of values at the specified positions
+        """
+        return [self.get_value(at, channels) for at in positions]

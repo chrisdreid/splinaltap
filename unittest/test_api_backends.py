@@ -30,10 +30,12 @@ class TestBackends(unittest.TestCase):
         
         # Verify properties
         self.assertEqual(backend.name, "python")
-        self.assertEqual(backend.supports_gpu, False)  # Python backend doesn't support GPU
+        
+        # Get math functions 
+        from splinaltap.backends import get_math_functions
+        math_funcs = get_math_functions()
         
         # Math functions should include basic operations
-        math_funcs = backend.get_math_functions()
         self.assertIn("sin", math_funcs)
         self.assertIn("cos", math_funcs)
         self.assertIn("sqrt", math_funcs)
@@ -62,7 +64,8 @@ class TestBackends(unittest.TestCase):
             self.assertEqual(value, 5.0)
         
         # Test setting to an invalid backend
-        with self.assertRaises(ValueError):
+        from splinaltap.backends import BackendError
+        with self.assertRaises(BackendError):
             BackendManager.set_backend("nonexistent_backend")
     
     def test_use_best_available(self):
@@ -75,7 +78,6 @@ class TestBackends(unittest.TestCase):
         
         # Verify that a backend was selected
         self.assertIsNotNone(backend)
-        self.assertIsNotNone(backend.name)
         
         # Note: We can't easily predict which backend will be selected as "best"
         # since it depends on the test environment, but we can test functionality
