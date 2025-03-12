@@ -1203,9 +1203,25 @@ def generate_scene_cmd(args: argparse.Namespace) -> None:
             
     print(f"Generated scene file: {filepath}")
 
-def backend_cmd(args: argparse.Namespace) -> None:
-    """Handle the backend command."""
-    if args.list:
+def backend_cmd(arg: str = None) -> int:
+    """Handle the backend command with the given argument.
+    
+    Args:
+        arg: Optional backend name, "best", or "ls"
+        
+    Returns:
+        0 on success, 1 on error
+    """
+    # No argument or empty - show only the current backend name
+    if not arg or not arg.strip():
+        backend = BackendManager.get_backend()
+        print(backend.name)
+        return 0
+    
+    # Handle specific actions
+    arg = arg.strip().lower()
+    
+    if arg == "ls":
         # List available backends
         available = BackendManager.available_backends()
         current = BackendManager.get_backend().name
@@ -1223,34 +1239,33 @@ def backend_cmd(args: argparse.Namespace) -> None:
             current_marker = " [current]" if name == current else ""
             
             print(f"  {name}{feature_str}{current_marker}")
-            
-    elif args.info:
-        # Show info about current backend
-        backend = BackendManager.get_backend()
-        print(f"Current backend: {backend.name}")
-        print(f"GPU support: {'Yes' if backend.supports_gpu else 'No'}")
-        print(f"Autodiff support: {'Yes' if backend.supports_autodiff else 'No'}")
+        return 0
         
-    elif args.use:
-        # Set backend
-        try:
-            BackendManager.set_backend(args.use)
-            print(f"Backend set to {args.use}")
-        except Exception as e:
-            print(f"Error setting backend: {e}")
-            return 1
-            
-    elif args.best:
+    elif arg == "best":
         # Use best available backend
         original = BackendManager.get_backend().name
         BackendManager.use_best_available()
         new_backend = BackendManager.get_backend().name
         print(f"Using best available backend: {new_backend} (was {original})")
+        return 0
         
-    else:
-        # Default to showing current backend
+    elif arg == "info":
+        # Show detailed info about current backend
         backend = BackendManager.get_backend()
         print(f"Current backend: {backend.name}")
+        print(f"GPU support: {'Yes' if backend.supports_gpu else 'No'}")
+        print(f"Autodiff support: {'Yes' if backend.supports_autodiff else 'No'}")
+        return 0
+    
+    else:
+        # Set to specific backend
+        try:
+            BackendManager.set_backend(arg)
+            print(f"Backend set to {arg}")
+            return 0
+        except Exception as e:
+            print(f"Error setting backend: {e}")
+            return 1
 
 def create_parser() -> argparse.ArgumentParser:
     """Create the command-line argument parser."""
@@ -1277,8 +1292,7 @@ def create_parser() -> argparse.ArgumentParser:
                                  dest="command", help="Convert a scene file to a different format")
     command_exclusive.add_argument("--scene-extract", action="store_const", const="scene-extract", 
                                  dest="command", help="Extract an interpolator from a scene to a new file")
-    command_exclusive.add_argument("--backend", action="store_const", const="backend", 
-                                 dest="command", help="Manage compute backends")
+    # Backend command is now handled by --backend-cmd directly, no longer needed here
     command_exclusive.add_argument("--generate-scene", 
                                  dest="generate_scene_path", metavar="FILEPATH",
                                  help="Generate a scene template file at the specified filepath")
@@ -1315,12 +1329,9 @@ def create_parser() -> argparse.ArgumentParser:
 #   Removed --scene-path as it's been integrated into --generate-scene directly
     parser.add_argument("--interpolator-name", help="Name of the interpolator to extract")
     
-    # Backend specific options
-    parser.add_argument("--list", action="store_true", help="List available backends (with --backend)")
-    parser.add_argument("--info", action="store_true", help="Show info about current backend (with --backend)")
-    parser.add_argument("--use-backend", dest="use", help="Set the active backend (with --backend)")
-    parser.add_argument("--use-best", dest="best", action="store_true", 
-                         help="Use the best available backend (with --backend)")
+    # Backend command with direct action - use nargs='?' to make the argument optional
+    parser.add_argument("--backend", dest="backend_action", metavar="[OPTION]", nargs='?', const='',
+                       help="Manage backends: no arg shows current, 'ls' lists all, 'info' shows details, 'NAME' sets backend, 'best' uses best")
     
     return parser
 
@@ -1332,12 +1343,16 @@ def main():
         # Parse arguments
         args = parser.parse_args()
         
+        # Handle the backend command immediately if present - it has highest priority
+        if hasattr(args, 'backend_action') and args.backend_action is not None:
+            return backend_cmd(args.backend_action)
+            
         # If no arguments were provided, print help and exit
         if len(sys.argv) == 1:
             parser.print_help()
             return 0
         
-        # Handle generate-scene specially since it's not using the command framework
+        # Handle special commands that don't use the command framework
         if hasattr(args, 'generate_scene_path') and args.generate_scene_path:
             # Create a new namespace with the filepath
             scene_args = argparse.Namespace()
@@ -1395,8 +1410,7 @@ def main():
             scene_convert_cmd(args)
         elif args.command == "scene-extract":
             scene_extract_cmd(args)
-        elif args.command == "backend":
-            backend_cmd(args)
+        # Backend command is now handled separately via --backend-cmd
         else:
             # This shouldn't happen, but just in case
             parser.print_help()

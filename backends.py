@@ -680,14 +680,20 @@ class BackendManager:
         ranked_backends = []
         for name in available:
             backend = cls._backends[name]
-            rank = backend.performance_rank(data_size, method)
-            ranked_backends.append((rank, backend))
+            try:
+                rank = backend.performance_rank(data_size, method)
+                ranked_backends.append((rank, name))  # Store name instead of class
+            except Exception as e:
+                print(f"Warning: Error ranking backend {name}: {e}")
+                # Still include with a low rank
+                ranked_backends.append((0, name))
             
         # Sort by rank (descending)
-        ranked_backends.sort(reverse=True)
+        ranked_backends.sort(reverse=True, key=lambda x: x[0])  # Sort only by rank
         
         # Return the highest-ranked backend
-        return ranked_backends[0][1]
+        best_name = ranked_backends[0][1]
+        return cls._backends[best_name]
     
     @classmethod
     def use_best_available(cls, data_size: int = 1000, method: str = "linear") -> None:
