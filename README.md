@@ -182,6 +182,7 @@ python splinaltap --backend ls              # List all backends
 python splinaltap --backend info            # Show detailed info
 python splinaltap --backend numpy           # Set backend to numpy
 python splinaltap --backend best            # Use best available backend
+python splinaltap --backend cupy --input-file input.json --samples 100  # Run with cupy backend
 
 # Define and use keyframes directly on command line (0-1 normalized range)
 python splinaltap --keyframes 0:0@cubic 0.5:10@cubic 1:0@cubic --samples 100 --output-file from_cli.csv
@@ -215,6 +216,11 @@ python splinaltap --backend ls               # List available backends
 python splinaltap --backend info             # Show detailed backend info
 python splinaltap --backend numpy            # Switch to NumPy backend
 python splinaltap --backend best             # Use best available backend
+
+# Use specific backend for a command
+python splinaltap --backend numpy --input-file input.json --samples 0.5 0.75  # Run with numpy backend
+python splinaltap --backend cupy --visualize --input-file input.json          # Visualize using cupy
+python splinaltap --backend jax --input-file input.json --samples 1000        # Generate 1000 samples with JAX
 ```
 
 ### Input File Format
@@ -368,7 +374,9 @@ python splinaltap --keyframes 0:0@cubic 0.5:10@bezier{cp=0.6,12,0.7,8} 1:0@cubic
 Specialized operations require explicit commands:
 - `--visualize`: For generating plots and visualizations
 - `--scene`: Unified command for scene operations with subcommands like `info`, `ls`, `convert`, `extract`
-- `--backend`: Unified command for managing compute backends (no args shows current, `ls` lists all, etc.)
+- `--backend`: Unified command for managing compute backends:
+  - Used alone: `--backend` (shows current), `--backend ls` (lists all), etc.
+  - Used with other commands: `--backend numpy --input-file input.json` (runs with specified backend)
 - `--generate-scene`: For creating scene files at a specified filepath
 
 ### Advanced Sample Syntax

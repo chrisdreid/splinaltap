@@ -1481,19 +1481,34 @@ def main():
         # Parse arguments
         args = parser.parse_args()
         
-        # Handle special commands with highest priority
-        # Backend command
-        if hasattr(args, 'backend_action') and args.backend_action is not None:
-            return backend_cmd(args.backend_action)
-            
-        # Scene command
-        if hasattr(args, 'scene_action') and args.scene_action is not None:
-            return scene_cmd(args.scene_action)
-            
         # If no arguments were provided, print help and exit
         if len(sys.argv) == 1:
             parser.print_help()
             return 0
+            
+        # Handle the backend command - but only exit if there are no other actionable args
+        has_backend_action = hasattr(args, 'backend_action') and args.backend_action is not None
+        has_other_action = (
+            args.input_file or 
+            args.keyframes or 
+            args.samples or
+            args.command or 
+            (hasattr(args, 'scene_action') and args.scene_action is not None) or
+            (hasattr(args, 'generate_scene_path') and args.generate_scene_path)
+        )
+        
+        # If backend action is specified, set the backend
+        if has_backend_action:
+            backend_result = backend_cmd(args.backend_action)
+            # If there are no other actions, we're done
+            if not has_other_action:
+                return backend_result
+            # Otherwise continue with the other actions using the newly set backend
+            print(f"Running with backend: {BackendManager.get_backend().name}")
+        
+        # Handle scene command
+        if hasattr(args, 'scene_action') and args.scene_action is not None:
+            return scene_cmd(args.scene_action)
         
         # Handle special commands that don't use the command framework
         if hasattr(args, 'generate_scene_path') and args.generate_scene_path:
