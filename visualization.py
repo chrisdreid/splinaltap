@@ -10,6 +10,13 @@ try:
 except ImportError:
     has_matplotlib = False
 
+# Check if NumPy is available
+try:
+    import numpy as np
+    HAS_NUMPY = True
+except ImportError:
+    HAS_NUMPY = False
+
 def plot_interpolation_comparison(interpolator, t_values, methods=None, channels=None, title="Interpolation Methods Comparison"):
     """
     Plot a comparison of different interpolation methods.
@@ -44,17 +51,32 @@ def plot_interpolation_comparison(interpolator, t_values, methods=None, channels
     keyframe_t = [p[0] for p in keyframe_points]
     keyframe_values = [p[1] for p in keyframe_points]
 
-    # Convert t_values to numpy for matplotlib if needed
-    t_values_np = BackendManager.to_numpy(t_values)
+    # Convert to standard Python lists first to avoid backend issues
+    t_values_list = [float(t) for t in t_values]
+    
+    # Convert lists to numpy for matplotlib
+    if HAS_NUMPY:
+        t_values_np = np.array(t_values_list)
+    else:
+        t_values_np = t_values_list
 
     fig = plt.figure(figsize=(12, 8))
     for method in methods:
         try:
             # Sample values using current backend
-            values = interpolator.sample_range(min(t_values), max(t_values), len(t_values), method, channels)
+            values = interpolator.sample_range(min(t_values_list), max(t_values_list), len(t_values_list), method, channels)
             
-            # Convert to numpy for matplotlib if needed
-            values_np = BackendManager.to_numpy(values)
+            # Convert to standard Python list first
+            if hasattr(values, 'tolist'):
+                values_list = values.tolist()
+            else:
+                values_list = [float(v) for v in values]
+                
+            # Convert to numpy for matplotlib
+            if HAS_NUMPY:
+                values_np = np.array(values_list)
+            else:
+                values_np = values_list
             
             plt.plot(t_values_np, values_np, label=method.capitalize())
         except Exception as e:
@@ -97,14 +119,29 @@ def plot_single_interpolation(interpolator, t_values, method="cubic", channels=N
     keyframe_t = [p[0] for p in keyframe_points]
     keyframe_values = [p[1] for p in keyframe_points]
     
-    # Convert t_values to numpy for matplotlib if needed
-    t_values_np = BackendManager.to_numpy(t_values)
+    # Convert to standard Python lists first to avoid backend issues
+    t_values_list = [float(t) for t in t_values]
+    
+    # Convert lists to numpy for matplotlib
+    if HAS_NUMPY:
+        t_values_np = np.array(t_values_list)
+    else:
+        t_values_np = t_values_list
     
     # Sample values using current backend
-    values = interpolator.sample_range(min(t_values), max(t_values), len(t_values), method, channels)
+    values = interpolator.sample_range(min(t_values_list), max(t_values_list), len(t_values_list), method, channels)
     
-    # Convert to numpy for matplotlib if needed
-    values_np = BackendManager.to_numpy(values)
+    # Convert to standard Python list first
+    if hasattr(values, 'tolist'):
+        values_list = values.tolist()
+    else:
+        values_list = [float(v) for v in values]
+        
+    # Convert to numpy for matplotlib
+    if HAS_NUMPY:
+        values_np = np.array(values_list)
+    else:
+        values_np = values_list
     
     fig = plt.figure(figsize=(12, 6))
     plt.plot(t_values_np, values_np, label=method.capitalize())

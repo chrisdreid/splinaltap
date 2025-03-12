@@ -664,10 +664,16 @@ def sample_cmd(args: argparse.Namespace) -> None:
                         diffs = [samples[i+1] - samples[i] for i in range(len(samples)-1)]
                         if max(diffs) - min(diffs) < 1e-10:  # Approximately equal spacing
                             # Use GPU for evenly spaced samples
-                            values = interpolator.sample_with_gpu(x_min, x_max, len(samples), method, channels)
-                            values_by_method[method] = values
-                            print(f"Using GPU acceleration for method: {method}")
-                            continue
+                            try:
+                                values = interpolator.sample_with_gpu(x_min, x_max, len(samples), method, channels)
+                                # Convert numpy array to list for safe serialization
+                                if hasattr(values, 'tolist'):
+                                    values = values.tolist()
+                                values_by_method[method] = values
+                                print(f"Using GPU acceleration for method: {method}")
+                                continue
+                            except Exception as e:
+                                print(f"GPU processing error: {e}, falling back to CPU")
                 except Exception as e:
                     print(f"GPU acceleration failed: {e}, falling back to CPU")
             

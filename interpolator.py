@@ -327,7 +327,21 @@ class KeyframeInterpolator:
 
     def _get_keyframe_points(self, channels: Dict[str, float] = {}) -> List[Tuple[float, float]]:
         """Convert keyframes to a list of (index, value) pairs with channel values."""
-        return [(index, self._evaluate_keyframe(index, index, channels)) for index in sorted(self.keyframes)]
+        result = []
+        for index in sorted(self.keyframes):
+            # Evaluate keyframe and convert result to standard Python float
+            value = self._evaluate_keyframe(index, index, channels)
+            if hasattr(value, 'tolist') or hasattr(value, 'item'):
+                # Convert numpy/cupy arrays to Python scalars
+                try:
+                    if hasattr(value, 'item'):
+                        value = value.item()
+                    else:
+                        value = float(value)
+                except:
+                    value = float(value)
+            result.append((float(index), float(value)))
+        return result
 
     def get_value(self, t: float, method: str = "linear", channels: Dict[str, float] = {}) -> float:
         """Get the interpolated value at time t using the specified method.
