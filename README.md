@@ -569,104 +569,117 @@ plt.title("Interpolation Methods Comparison")
 plt.show()
 ```
 
-### Understanding Interpolators, Dimensions, and Channels
+### Understanding Solvers, Splines, and Channels
 
 SplinalTap works with three core concepts that provide different levels of organization and flexibility:
 
-#### 1. Interpolators: Independent Animation Curves or Properties
+#### 1. Splines: Independent Animation Curves or Properties
 
-Interpolators are top-level entities that represent a complete animation curve or property. In a scene file, 
+Splines are named animation curves or properties that represent a complete animation entity. In a solver file, 
 these are named entities (like "position", "rotation", "scale") that can be manipulated independently.
 
 ```python
-# A scene can contain multiple independent interpolators
-scene = {
-    "interpolators": {
-        "position": { /* position interpolator data */ },
-        "rotation": { /* rotation interpolator data */ },
-        "scale": { /* scale interpolator data */ }
+# A solver can contain multiple independent splines
+solver = {
+    "splines": {
+        "position": { /* position spline data with channels */ },
+        "rotation": { /* rotation spline data with channels */ },
+        "scale": { /* scale spline data with channels */ }
     }
 }
 
-# Each interpolator can be extracted and used independently
-position_interpolator = scene.get_interpolator("position")
-rotation_interpolator = scene.get_interpolator("rotation")
+# Each spline can be extracted and used independently
+position_spline = solver.get_spline("position")
+rotation_spline = solver.get_spline("rotation")
 ```
 
-When using the `--scene extract` command, you're extracting a named interpolator from a scene file:
+When using the `--scene extract` command, you're extracting a named spline from a solver file:
 ```bash
-# Extract the "position" interpolator including all its dimensions
+# Extract the "position" spline including all its channels
 python splinaltap --scene "extract scene.json position.json position"
 ```
 
-#### 2. Dimensions: Components of an Interpolated Value
+#### 2. Channels: Components of a Spline
 
-Dimensions represent individual components of an interpolator (like x, y, z coordinates for position). 
-Each dimension has its own set of keyframes but shares the same normalized timeline range.
+Channels represent individual components of a spline (like x, y, z coordinates for position). 
+Each channel has its own set of keyframes and interpolation method but shares the same normalized timeline range.
 
 ```python
-# Create a 3D interpolator (x, y, z dimensions)
-interpolator = KeyframeInterpolator(dimensions=3)
+# Create a 3D position spline with x, y, z channels
+spline = Spline()
+spline.add_channel("x")
+spline.add_channel("y")
+spline.add_channel("z")
 
-# Set a keyframe with all three dimensions
-interpolator.set_keyframe(0.0, [0, 0, 0])  # Start at origin
-interpolator.set_keyframe(0.5, [10, 20, 5])  # Mid-point
-interpolator.set_keyframe(1.0, [20, 0, 10])  # End point
+# Set keyframes for each channel
+spline.channels["x"].add_keyframe(at=0.0, value=0)
+spline.channels["x"].add_keyframe(at=1.0, value=10)
 
-# Get the interpolated 3D position at t=0.25
-position = interpolator.get_value(0.25)  # Returns something like [5, 10, 2.5]
+spline.channels["y"].add_keyframe(at=0.0, value=0)
+spline.channels["y"].add_keyframe(at=1.0, value=20)
 
-# Access a specific dimension
-x_value = interpolator.get_dimension_value(0.25, "x")
+spline.channels["z"].add_keyframe(at=0.0, value=0)
+spline.channels["z"].add_keyframe(at=1.0, value=5)
+
+# Get the interpolated position at @=0.25
+values = spline.get_value(0.25)  # Returns {"x": 2.5, "y": 5.0, "z": 1.25}
+
+# Access a specific channel
+x_value = spline.get_channel_value("x", 0.25)  # Returns 2.5
 ```
 
-You can extract a specific dimension from an interpolator using the dot notation:
+You can extract a specific channel from a spline using the dot notation:
 ```bash
-# Extract just the x dimension from the position interpolator
+# Extract just the x channel from the position spline
 python splinaltap --scene "extract scene.json position_x.json position.x"
 ```
 
-#### 3. Channels: Dynamic Parameters for Expressions
+#### 3. External Channels vs. Variables
 
-Channels are external parameters that you pass at evaluation time to influence expressions,
-without changing the keyframes themselves. Think of them as runtime inputs or control knobs.
+SplinalTap has two distinct ways to parameterize expressions:
 
-```python
-# Define keyframes that use channel values
-interpolator.set_keyframe(0.3, "a * sin(t) + b")  # Expression uses channels 'a' and 'b'
+1. **Variables**: Constants defined at creation time, baked into expressions for all evaluations
+   ```python
+   # Set a variable that can be used in keyframe expressions
+   solver.set_variable("amplitude", 2.5)
+   
+   # Use in keyframe expressions
+   channel.add_keyframe(at=0.5, value="sin(@) * amplitude")
+   ```
 
-# Evaluate with different channel values
-channels_1 = {"a": 1.0, "b": 0.5}  # First configuration
-channels_2 = {"a": 2.0, "b": 0.0}  # Second configuration
-
-# Same keyframes, different results based on channel values
-positions = [i * 0.01 for i in range(101)]
-values_1 = [interpolator.get_value(p, "cubic", channels_1) for p in positions]
-values_2 = [interpolator.get_value(p, "cubic", channels_2) for p in positions]
-```
+2. **External Channels**: Dynamic values passed at evaluation time to influence expressions
+   ```python
+   # Define keyframes that use external channel values
+   channel.add_keyframe(at=0.5, value="a * sin(@) + b")  # Uses channels 'a' and 'b'
+   
+   # Evaluate with different channel values
+   ext_channels = {"a": 1.0, "b": 0.5}  # External parameters
+   value = channel.get_value(0.5, ext_channels)
+   ```
 
 **Key Differences Summary**: 
 
-- **Interpolators** are complete, named animation curves or properties (position, rotation, etc.)
-- **Dimensions** are components of an interpolator (x, y, z coordinates) with their own keyframes
-- **Channels** are dynamic inputs passed at evaluation time to parameterize expressions
-- **Variables** are constants defined at creation time and baked into the interpolator
+- **Splines** are complete, named animation curves or properties (position, rotation, etc.)
+- **Channels** are components of a spline (x, y, z coordinates) with their own keyframes and interpolation methods
+- **External channels** are dynamic inputs passed at evaluation time to parameterize expressions
+- **Variables** are constants defined at creation time and baked into expressions
 
 **Hierarchy**:
 ```
-Scene
- ├─ Interpolator: "position" (a named animation property)
- │   ├─ Dimension: "x" (component with its own keyframes)
- │   ├─ Dimension: "y" (component with its own keyframes)
- │   └─ Dimension: "z" (component with its own keyframes)
+Solver
+ ├─ Spline: "position" (a named animation property)
+ │   ├─ Channel: "x" (component with its own keyframes and interpolation)
+ │   ├─ Channel: "y" (component with its own keyframes and interpolation)
+ │   └─ Channel: "z" (component with its own keyframes and interpolation)
  │
- ├─ Interpolator: "rotation" (another animation property)
- │   ├─ Dimension: "x" (component with its own keyframes)
- │   ├─ Dimension: "y" (component with its own keyframes)
- │   └─ Dimension: "z" (component with its own keyframes)
+ ├─ Spline: "rotation" (another animation property)
+ │   ├─ Channel: "x" (component with its own keyframes and interpolation)
+ │   ├─ Channel: "y" (component with its own keyframes and interpolation)
+ │   └─ Channel: "z" (component with its own keyframes and interpolation)
  │
- └─ Interpolator: "scale" (a single-dimension property)
-     └─ (single value with keyframes)
+ └─ Spline: "scale" (a multi-channel property)
+     ├─ Channel: "x" (component with its own keyframes and interpolation)
+     └─ Channel: "y" (component with its own keyframes and interpolation)
 ```
 
 ### Using Control Points (Bezier)
