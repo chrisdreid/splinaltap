@@ -77,6 +77,16 @@ angle = phase.add_channel("angle")
 angle.add_keyframe(at=0.0, value=0)
 angle.add_keyframe(at=1.0, value=360)
 
+# Create noise spline using random functions
+noise = solver.create_spline("noise")
+white_noise = noise.add_channel("white")
+white_noise.add_keyframe(at=0.0, value="rand() * 2 - 1")  # Random values between -1 and 1
+white_noise.add_keyframe(at=1.0, value="rand() * 2 - 1")
+
+quant_noise = noise.add_channel("quantized")
+quant_noise.add_keyframe(at=0.0, value="randint([0, 5]) * 0.2")  # Quantized to 0, 0.2, 0.4, 0.6, 0.8, 1.0
+quant_noise.add_keyframe(at=1.0, value="randint([0, 5]) * 0.2")
+
 # Save to file
 solver.save("parameter_data.json")
 
@@ -114,6 +124,10 @@ The name "splinaltap" is a playful nod to the mockumentary "This Is Spinal Tap" 
   - Bezier Interpolation
   - PCHIP (Piecewise Cubic Hermite Interpolating Polynomial)
   - Gaussian Process Interpolation (requires NumPy)
+- 🎲 **Random Value Functions**: Generate random values in expressions:
+  - `rand()`: Returns a random float between 0 and 1
+  - `randint([min, max])`: Returns a random integer between min and max (inclusive)
+  - `randint(max)`: Returns a random integer between 0 and max (inclusive)
 - 🧮 **Variable Support**: Define and use variables in your expressions for complex mathematical transformations
 - 🖥️ **Command Line Interface**: Access all features from the command line
 
@@ -215,6 +229,10 @@ channel.add_keyframe(at=1.0, value=10)
 # Define a variable
 solver.set_variable("amplitude", 2.5)
 channel.add_keyframe(at=0.7, value="amplitude * sin(t)")
+
+# Use random functions in expressions
+channel.add_keyframe(at=0.9, value="rand() * 5")          # Random float between 0 and 5
+channel.add_keyframe(at=0.95, value="randint([1, 10])")   # Random integer between 1 and 10
 
 # Evaluate at various points
 positions = [i * 0.01 for i in range(101)]
