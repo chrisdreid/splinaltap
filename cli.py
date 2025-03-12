@@ -95,7 +95,7 @@ def parse_method_parameters(method_str: str) -> Tuple[str, Optional[Dict[str, st
     return method_name, params
 
 
-def create_solver_from_args(args: argparse.Namespace) -> Solver:
+def create_solver_from_args(args: argparse.Namespace) -> KeyframeSolver:
     """Create a Solver from command-line arguments.
     
     Args:

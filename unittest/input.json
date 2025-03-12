@@ -1,0 +1,86 @@
+{
+  "version": "2.0",
+  "name": "TestScene",
+  "metadata": {
+    "author": "SplinalTap Tests",
+    "description": "Test JSON file for unit tests"
+  },
+  "variables": {
+    "pi": 3.14159,
+    "amplitude": 10
+  },
+  "range": [0, 1],
+  "splines": [
+    {
+      "name": "position",
+      "channels": [
+        {
+          "name": "x",
+          "interpolation": "linear",
+          "min_max": [0, 100],
+          "keyframes": [
+            [0.0, 0.0],
+            [0.5, 50.0],
+            [1.0, 100.0]
+          ]
+        },
+        {
+          "name": "y",
+          "interpolation": "cubic",
+          "keyframes": [
+            [0.0, 0.0],
+            [0.25, 25.0],
+            [0.5, 50.0],
+            [0.75, 75.0],
+            [1.0, 0.0]
+          ]
+        },
+        {
+          "name": "z",
+          "interpolation": "step",
+          "keyframes": [
+            [0.0, 0.0],
+            [0.5, 50.0],
+            [1.0, 0.0]
+          ]
+        }
+      ]
+    },
+    {
+      "name": "rotation",
+      "channels": [
+        {
+          "name": "angle",
+          "interpolation": "cubic",
+          "min_max": [0, 360],
+          "keyframes": [
+            [0.0, 0.0],
+            [1.0, 360.0]
+          ]
+        }
+      ]
+    },
+    {
+      "name": "expressions",
+      "channels": [
+        {
+          "name": "sine",
+          "interpolation": "linear",
+          "keyframes": [
+            [0.0, "sin(0)"],
+            [0.5, "sin(pi/2)"],
+            [1.0, "sin(pi)"]
+          ]
+        },
+        {
+          "name": "random",
+          "interpolation": "linear",
+          "keyframes": [
+            [0.0, "rand() * amplitude"],
+            [1.0, "randint(5)"]
+          ]
+        }
+      ]
+    }
+  ]
+}

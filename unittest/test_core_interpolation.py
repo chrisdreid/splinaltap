@@ -1,0 +1,211 @@
+#!/usr/bin/env python3
+"""Tests for interpolation methods in SplinalTap."""
+
+import unittest
+import math
+from splinaltap import Channel, Keyframe
+from splinaltap.backends import BackendManager
+
+class TestInterpolationMethods(unittest.TestCase):
+    """Test all interpolation methods for correctness."""
+    
+    def setUp(self):
+        """Set up test case."""
+        # Reset backend to default for consistent testing
+        BackendManager.set_backend("python")
+    
+    def test_linear_interpolation(self):
+        """Test linear interpolation between keyframes."""
+        channel = Channel(interpolation="linear")
+        channel.add_keyframe(at=0.0, value=0.0)
+        channel.add_keyframe(at=1.0, value=10.0)
+        
+        # Test values at various points
+        self.assertEqual(channel.get_value(0.0), 0.0)
+        self.assertEqual(channel.get_value(0.5), 5.0)
+        self.assertEqual(channel.get_value(1.0), 10.0)
+        self.assertEqual(channel.get_value(0.25), 2.5)
+        self.assertEqual(channel.get_value(0.75), 7.5)
+    
+    def test_step_interpolation(self):
+        """Test step interpolation between keyframes."""
+        channel = Channel(interpolation="step")
+        channel.add_keyframe(at=0.0, value=0.0)
+        channel.add_keyframe(at=0.5, value=5.0)
+        channel.add_keyframe(at=1.0, value=10.0)
+        
+        # Test values at various points
+        self.assertEqual(channel.get_value(0.0), 0.0)
+        self.assertEqual(channel.get_value(0.49), 0.0)
+        self.assertEqual(channel.get_value(0.5), 5.0)
+        self.assertEqual(channel.get_value(0.75), 5.0)
+        self.assertEqual(channel.get_value(0.99), 5.0)
+        self.assertEqual(channel.get_value(1.0), 10.0)
+    
+    def test_cubic_interpolation(self):
+        """Test cubic interpolation between keyframes."""
+        channel = Channel(interpolation="cubic")
+        channel.add_keyframe(at=0.0, value=0.0)
+        channel.add_keyframe(at=1.0, value=10.0)
+        
+        # Test values at endpoints
+        self.assertEqual(channel.get_value(0.0), 0.0)
+        self.assertEqual(channel.get_value(1.0), 10.0)
+        
+        # Test that middle point is reasonably close to linear (in simplest case)
+        # Cubic with just two points should be relatively close to linear
+        self.assertAlmostEqual(channel.get_value(0.5), 5.0, delta=0.1)
+        
+        # Add more keyframes for a more complex test
+        complex_channel = Channel(interpolation="cubic")
+        complex_channel.add_keyframe(at=0.0, value=0.0)
+        complex_channel.add_keyframe(at=0.25, value=2.5)
+        complex_channel.add_keyframe(at=0.5, value=7.5)
+        complex_channel.add_keyframe(at=1.0, value=10.0)
+        
+        # Test keyframe points match exactly
+        self.assertEqual(complex_channel.get_value(0.0), 0.0)
+        self.assertEqual(complex_channel.get_value(0.25), 2.5)
+        self.assertEqual(complex_channel.get_value(0.5), 7.5)
+        self.assertEqual(complex_channel.get_value(1.0), 10.0)
+    
+    def test_bezier_interpolation(self):
+        """Test bezier interpolation between keyframes."""
+        channel = Channel(interpolation="bezier")
+        
+        # Simple case with control points
+        channel.add_keyframe(at=0.0, value=0.0, control_points=(0.1, 0.0, 0.4, 5.0))
+        channel.add_keyframe(at=1.0, value=10.0, control_points=(0.6, 15.0, 0.9, 10.0))
+        
+        # Test values at endpoints
+        self.assertEqual(channel.get_value(0.0), 0.0)
+        self.assertEqual(channel.get_value(1.0), 10.0)
+        
+        # Test that we get expected curve behavior (slow start, fast middle, slow end)
+        # Due to the control points we selected
+        v25 = channel.get_value(0.25)
+        v50 = channel.get_value(0.5)
+        v75 = channel.get_value(0.75)
+        
+        # Verify general curve shape
+        self.assertLess(v25, 5.0)  # Should start slowly (below linear)
+        self.assertGreater(v50, 5.0)  # Should overshoot in middle (above linear)
+        self.assertGreater(v75, 7.5)  # Should stay high longer (above linear)
+    
+    def test_hermite_interpolation(self):
+        """Test hermite interpolation between keyframes."""
+        channel = Channel(interpolation="hermite")
+        
+        # Simple case with derivatives
+        channel.add_keyframe(at=0.0, value=0.0, derivative=0.0)
+        channel.add_keyframe(at=1.0, value=10.0, derivative=0.0)
+        
+        # Test values at endpoints
+        self.assertEqual(channel.get_value(0.0), 0.0)
+        self.assertEqual(channel.get_value(1.0), 10.0)
+        
+        # With both derivatives at 0, should form S-curve
+        v25 = channel.get_value(0.25)
+        v50 = channel.get_value(0.5)
+        v75 = channel.get_value(0.75)
+        
+        # Verify general curve shape
+        self.assertLess(v25, 2.5)  # Should start slowly (below linear)
+        self.assertAlmostEqual(v50, 5.0, delta=0.1)  # Should be close to linear at middle
+        self.assertGreater(v75, 7.5)  # Should end slowly (above linear)
+        
+        # Test with non-zero derivatives
+        channel2 = Channel(interpolation="hermite")
+        channel2.add_keyframe(at=0.0, value=0.0, derivative=10.0)  # Start with positive slope
+        channel2.add_keyframe(at=1.0, value=10.0, derivative=-10.0)  # End with negative slope
+        
+        # Test values at endpoints
+        self.assertEqual(channel2.get_value(0.0), 0.0)
+        self.assertEqual(channel2.get_value(1.0), 10.0)
+        
+        # With derivatives as specified, should overshoot
+        v25 = channel2.get_value(0.25)
+        v50 = channel2.get_value(0.5)
+        v75 = channel2.get_value(0.75)
+        
+        # Verify general curve shape with defined derivatives
+        self.assertGreater(v25, 2.5)  # Should start quickly (above linear)
+        self.assertGreater(v50, 5.0)  # Should overshoot in middle (above linear)
+        self.assertLess(v75, 7.5)  # Should undershoot at end (below linear)
+    
+    def test_mixed_interpolation_methods(self):
+        """Test mixing different interpolation methods in the same channel."""
+        channel = Channel()  # Default is linear
+        
+        # Add keyframes with different interpolation methods
+        channel.add_keyframe(at=0.0, value=0.0)  # Default linear
+        channel.add_keyframe(at=0.25, value=2.5, interpolation="cubic")
+        channel.add_keyframe(at=0.5, value=5.0, interpolation="step")
+        channel.add_keyframe(at=0.75, value=7.5, interpolation="bezier", 
+                             control_points=(0.8, 8.0, 0.9, 7.0))
+        channel.add_keyframe(at=1.0, value=10.0, interpolation="hermite", derivative=0.0)
+        
+        # Test values at keyframe points
+        self.assertEqual(channel.get_value(0.0), 0.0)
+        self.assertEqual(channel.get_value(0.25), 2.5)
+        self.assertEqual(channel.get_value(0.5), 5.0)
+        self.assertEqual(channel.get_value(0.75), 7.5)
+        self.assertEqual(channel.get_value(1.0), 10.0)
+        
+        # Test interpolation between keyframe points
+        # 0.0-0.25 should use cubic (coming into 0.25)
+        # 0.25-0.5 should use step (coming into 0.5)
+        # 0.5-0.75 should use bezier (coming into 0.75)
+        # 0.75-1.0 should use hermite (coming into 1.0)
+        
+        # Step interpolation for 0.25-0.5 means value doesn't change until 0.5
+        self.assertEqual(channel.get_value(0.4), 2.5)
+        
+        # Bezier for 0.5-0.75 with our control points should curve above linear
+        bezier_val = channel.get_value(0.6)
+        linear_val = 5.0 + (7.5 - 5.0) * (0.6 - 0.5) / (0.75 - 0.5)  # Linear equivalent
+        self.assertNotEqual(bezier_val, linear_val)  # Should be different from linear
+    
+    def test_interpolation_outside_range(self):
+        """Test interpolation behavior outside the defined range."""
+        channel = Channel()
+        channel.add_keyframe(at=0.2, value=20.0)
+        channel.add_keyframe(at=0.8, value=80.0)
+        
+        # Test before first keyframe - should clamp to first value
+        self.assertEqual(channel.get_value(0.0), 20.0)
+        self.assertEqual(channel.get_value(0.1), 20.0)
+        
+        # Test after last keyframe - should clamp to last value
+        self.assertEqual(channel.get_value(0.9), 80.0)
+        self.assertEqual(channel.get_value(1.0), 80.0)
+
+    def test_multi_segment_interpolation(self):
+        """Test interpolation over multiple segments."""
+        channel = Channel(interpolation="cubic")
+        
+        # Create multiple segments with alternating values
+        channel.add_keyframe(at=0.0, value=0.0)
+        channel.add_keyframe(at=0.2, value=10.0)
+        channel.add_keyframe(at=0.4, value=0.0)
+        channel.add_keyframe(at=0.6, value=10.0)
+        channel.add_keyframe(at=0.8, value=0.0)
+        channel.add_keyframe(at=1.0, value=10.0)
+        
+        # Test at keyframe points
+        self.assertEqual(channel.get_value(0.0), 0.0)
+        self.assertEqual(channel.get_value(0.2), 10.0)
+        self.assertEqual(channel.get_value(0.4), 0.0)
+        self.assertEqual(channel.get_value(0.6), 10.0)
+        self.assertEqual(channel.get_value(0.8), 0.0)
+        self.assertEqual(channel.get_value(1.0), 10.0)
+        
+        # Test between keyframes - should be smooth with cubic
+        self.assertGreater(channel.get_value(0.1), 0.0)
+        self.assertLess(channel.get_value(0.1), 10.0)
+        
+        self.assertGreater(channel.get_value(0.3), 0.0)
+        self.assertLess(channel.get_value(0.3), 10.0)
+
+if __name__ == "__main__":
+    unittest.main()
