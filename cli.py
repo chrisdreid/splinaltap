@@ -387,6 +387,8 @@ def sample_solver(solver: KeyframeSolver, args: argparse.Namespace) -> Dict[str,
     # Initialize results
     results = {
         "version": "2.0",
+        "name": solver.name,
+        "metadata": solver.metadata,
         "samples": sample_points,
         "results": {}
     }
@@ -400,29 +402,28 @@ def sample_solver(solver: KeyframeSolver, args: argparse.Namespace) -> Dict[str,
     for at in sample_points:
         # For each spline
         for spline_name, spline in solver.splines.items():
+            # Initialize spline in results if needed
+            if spline_name not in results["results"]:
+                results["results"][spline_name] = {}
+                
             # For each channel in the spline
             for channel_name, channel in spline.channels.items():
-                # Get the full path (spline.channel)
-                full_name = f"{spline_name}.{channel_name}"
-                
-                # Initialize results for this channel if needed
-                if full_name not in results["results"]:
-                    results["results"][full_name] = []
+                # Initialize channel in results if needed
+                if channel_name not in results["results"][spline_name]:
+                    results["results"][spline_name][channel_name] = []
                 
                 try:
                     # Sample and store the value, with better error handling
                     try:
                         value = channel.get_value(at)
                     except Exception as e:
-                        print(f"Error sampling {full_name} at {at}: {e}")
                         value = 0.0  # Default value on error
                         
-                    results["results"][full_name].append(value)
+                    results["results"][spline_name][channel_name].append(value)
                 except Exception as e:
-                    print(f"Unexpected error adding value to results: {e}")
                     # Try to ensure we have a value
-                    if len(results["results"][full_name]) < len(sample_points):
-                        results["results"][full_name].append(0.0)
+                    if len(results["results"][spline_name][channel_name]) < len(sample_points):
+                        results["results"][spline_name][channel_name].append(0.0)
     
     return results
 
@@ -452,15 +453,27 @@ def save_results(results: Dict[str, Any], args: argparse.Namespace) -> None:
         with open(output_file, 'w', newline='') as f:
             writer = csv.writer(f)
             
-            # Write header
-            header = ['@'] + list(results['results'].keys())
+            # Create header with @ and all spline.channel combinations
+            header = ['@']
+            channel_paths = []
+            
+            # Build a list of all channel paths and the header
+            for spline_name, spline_data in results['results'].items():
+                for channel_name in spline_data.keys():
+                    channel_path = f"{spline_name}.{channel_name}"
+                    header.append(channel_path)
+                    channel_paths.append((spline_name, channel_name))
+            
             writer.writerow(header)
             
             # Write data rows
             for i, at in enumerate(results['samples']):
                 row = [at]
-                for channel in results['results'].keys():
-                    row.append(results['results'][channel][i])
+                for spline_name, channel_name in channel_paths:
+                    if i < len(results['results'][spline_name][channel_name]):
+                        row.append(results['results'][spline_name][channel_name][i])
+                    else:
+                        row.append(0.0)  # Default if index is out of range
                 writer.writerow(row)
     elif content_type == 'yaml':
         if not HAS_YAML:
@@ -473,16 +486,26 @@ def save_results(results: Dict[str, Any], args: argparse.Namespace) -> None:
             f.write(f"SplinalTap Sampling Results\n")
             f.write(f"{'@':<10}")
             
+            # Create a list of all channel paths
+            channel_paths = []
+            for spline_name, spline_data in results['results'].items():
+                for channel_name in spline_data.keys():
+                    channel_path = f"{spline_name}.{channel_name}"
+                    channel_paths.append((spline_name, channel_name))
+            
             # Write header
-            for channel in results['results'].keys():
-                f.write(f"{channel:<15}")
+            for spline_name, channel_name in channel_paths:
+                f.write(f"{spline_name}.{channel_name:<15}")
             f.write("\n")
             
             # Write data rows
             for i, at in enumerate(results['samples']):
                 f.write(f"{at:<10.4f}")
-                for channel in results['results'].keys():
-                    f.write(f"{results['results'][channel][i]:<15.4f}")
+                for spline_name, channel_name in channel_paths:
+                    if i < len(results['results'][spline_name][channel_name]):
+                        f.write(f"{results['results'][spline_name][channel_name][i]:<15.4f}")
+                    else:
+                        f.write(f"{0.0:<15.4f}")  # Default if index is out of range
                 f.write("\n")
     else:
         raise ValueError(f"Unsupported content type: {content_type}")
@@ -490,23 +513,49 @@ def save_results(results: Dict[str, Any], args: argparse.Namespace) -> None:
     print(f"Results saved to {output_file}")
 
 
-def print_results(results: Dict[str, Any]) -> None:
+def print_results(results: Dict[str, Any], args: argparse.Namespace) -> None:
     """Print sampling results to the console.
     
     Args:
         results: The sampling results to print
+        args: Command-line arguments with output options
     """
+    # Check if --content-type is json, and print JSON to stdout
+    content_type = getattr(args, 'content_type', 'text')
+    
+    if content_type == 'json':
+        # Print the JSON to stdout
+        json_str = json.dumps(results, indent=2)
+        print(json_str)
+        return
+    elif content_type == 'yaml' and HAS_YAML:
+        # Print the YAML to stdout 
+        yaml_str = yaml.dump(results, default_flow_style=False)
+        print(yaml_str)
+        return
+    
+    # Otherwise print a formatted table
+    # Create a list of all channel paths
+    channel_paths = []
+    for spline_name, spline_data in results['results'].items():
+        for channel_name in spline_data.keys():
+            channel_path = f"{spline_name}.{channel_name}"
+            channel_paths.append((spline_name, channel_name))
+    
     # Print header
     print(f"{'@':<10}", end="")
-    for channel in results['results'].keys():
-        print(f"{channel:<15}", end="")
+    for spline_name, channel_name in channel_paths:
+        print(f"{spline_name}.{channel_name:<15}", end="")
     print()
     
     # Print data rows
     for i, at in enumerate(results['samples']):
         print(f"{at:<10.4f}", end="")
-        for channel in results['results'].keys():
-            print(f"{results['results'][channel][i]:<15.4f}", end="")
+        for spline_name, channel_name in channel_paths:
+            if i < len(results['results'][spline_name][channel_name]):
+                print(f"{results['results'][spline_name][channel_name][i]:<15.4f}", end="")
+            else:
+                print(f"{0.0:<15.4f}", end="")  # Default if index is out of range
         print()
 
 
@@ -1241,7 +1290,7 @@ def main():
     if args.output_file:
         save_results(results, args)
     else:
-        print_results(results)
+        print_results(results, args)
 
 
 if __name__ == "__main__":
