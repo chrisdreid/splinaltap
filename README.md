@@ -253,32 +253,142 @@ pip install cupy-cuda12x
 pip install "jax[cuda]" -f https://storage.googleapis.com/jax-releases/jax_cuda_releases.html
 ```
 
-### Verifying CUDA Installation
+### Testing Optional Dependencies
 
-You can verify your CUDA installation is working properly with:
+To verify that each optional dependency is installed and working correctly, you can use the following tests:
+
+#### Testing NumPy Installation
 
 ```python
 import splinaltap
 from splinaltap.backends import BackendManager
 
-# Check available backends
-print(BackendManager.available_backends())  # Should include 'cupy' if installed correctly
-
-# Set backend to CuPy
-BackendManager.set_backend('cupy')
-
-# Create a sample solver and verify it's using GPU
-solver = splinaltap.KeyframeSolver()
-spline = solver.create_spline("test")
-channel = spline.add_channel("value")
-channel.add_keyframe(at=0.0, value=0)
-channel.add_keyframe(at=1.0, value=10)
-
-# Generate samples using GPU
-samples = [channel.get_value(i/1000) for i in range(1001)]
-print(f"Backend used: {BackendManager.get_backend().name}")
-print(f"Supports GPU: {BackendManager.get_backend().supports_gpu}")
+# Check if NumPy backend is available
+backends = BackendManager.available_backends()
+if 'numpy' in backends:
+    print("NumPy is installed and available as a backend")
+    BackendManager.set_backend('numpy')
+    print(f"Backend used: {BackendManager.get_backend().name}")
+else:
+    print("NumPy is not installed or not properly configured")
 ```
+
+#### Testing YAML Support
+
+```python
+try:
+    import yaml
+    print("PyYAML is installed correctly")
+    
+    # Create a sample dictionary and dump to YAML
+    data = {"test": "value", "nested": {"key": "value"}}
+    yaml_str = yaml.dump(data)
+    print("YAML output:", yaml_str)
+    
+    # Try loading the YAML string
+    loaded = yaml.safe_load(yaml_str)
+    print("YAML loading works correctly")
+except ImportError:
+    print("PyYAML is not installed")
+except Exception as e:
+    print(f"PyYAML error: {e}")
+```
+
+#### Testing CuPy Installation (CUDA GPU Support)
+
+```python
+import splinaltap
+from splinaltap.backends import BackendManager
+
+# Check if CuPy backend is available
+backends = BackendManager.available_backends()
+if 'cupy' in backends:
+    print("CuPy is installed and available as a backend")
+    
+    try:
+        # Set backend to CuPy
+        BackendManager.set_backend('cupy')
+        
+        # Create a sample solver and verify it's using GPU
+        solver = splinaltap.KeyframeSolver()
+        spline = solver.create_spline("test")
+        channel = spline.add_channel("value")
+        channel.add_keyframe(at=0.0, value=0)
+        channel.add_keyframe(at=1.0, value=10)
+        
+        # Generate samples using GPU
+        samples = [channel.get_value(i/10) for i in range(11)]
+        print(f"Backend used: {BackendManager.get_backend().name}")
+        print(f"Supports GPU: {BackendManager.get_backend().supports_gpu}")
+        print("CuPy is working correctly")
+    except Exception as e:
+        print(f"CuPy error: {e}")
+else:
+    print("CuPy is not installed or not properly configured")
+```
+
+#### Testing JAX Installation (GPU with Autodiff Support)
+
+```python
+import splinaltap
+from splinaltap.backends import BackendManager
+
+# Check if JAX backend is available
+backends = BackendManager.available_backends()
+if 'jax' in backends:
+    print("JAX is installed and available as a backend")
+    
+    try:
+        # Set backend to JAX
+        BackendManager.set_backend('jax')
+        
+        # Create a sample solver and verify it's using JAX
+        solver = splinaltap.KeyframeSolver()
+        spline = solver.create_spline("test")
+        channel = spline.add_channel("value")
+        channel.add_keyframe(at=0.0, value=0)
+        channel.add_keyframe(at=1.0, value=10)
+        
+        # Generate samples using JAX
+        samples = [channel.get_value(i/10) for i in range(11)]
+        print(f"Backend used: {BackendManager.get_backend().name}")
+        print(f"JAX is working correctly")
+        
+        # You can also verify JAX directly
+        import jax
+        import jax.numpy as jnp
+        
+        # Check if GPU is available to JAX
+        print(f"JAX devices: {jax.devices()}")
+        
+        # Simple JAX computation
+        x = jnp.array([1.0, 2.0, 3.0])
+        y = jnp.sum(x)
+        print(f"JAX computation result: {y}")
+    except Exception as e:
+        print(f"JAX error: {e}")
+else:
+    print("JAX is not installed or not properly configured")
+```
+
+#### Testing All Backends with the CLI
+
+You can also verify available backends using the command line interface:
+
+```bash
+# List all available backends
+python splinaltap --backend ls
+
+# Get detailed info about the current backend
+python splinaltap --backend info
+
+# Try using a specific backend
+python splinaltap --backend numpy --keyframes "0:0" "1:10" --samples 5
+python splinaltap --backend cupy --keyframes "0:0" "1:10" --samples 5
+python splinaltap --backend jax --keyframes "0:0" "1:10" --samples 5
+```
+
+If the backends are properly installed, you should see successful output from these commands without errors related to the backend libraries.
 
 ## Quick Start
 
