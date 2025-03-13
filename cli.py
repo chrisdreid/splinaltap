@@ -334,13 +334,10 @@ def sample_solver(solver: KeyframeSolver, args: argparse.Namespace) -> Dict[str,
     sample_points = []
     
     if hasattr(args, 'samples') and args.samples:
-        print(f"Raw samples argument: {args.samples}")
-        
         if len(args.samples) == 1:
             try:
                 # Try to parse as integer sample count
                 sample_count = int(args.samples[0])
-                print(f"Parsed as sample count: {sample_count}")
                 
                 # Generate evenly spaced sample points
                 if sample_count > 1:
@@ -357,31 +354,23 @@ def sample_solver(solver: KeyframeSolver, args: argparse.Namespace) -> Dict[str,
                         sample_points = [(min_range + max_range) / 2]
                     else:
                         sample_points = [0.5]
-                        
-                print(f"Generated sample points: {sample_points}")
             except ValueError:
                 # Not an integer, treat as a single sample point
-                print(f"Not an integer sample count")
                 try:
                     point = float(args.samples[0].split('@')[0]) if '@' in args.samples[0] else float(args.samples[0])
                     sample_points = [point]
-                    print(f"Parsed as single point: {point}")
                 except ValueError:
                     # Couldn't parse, use default
                     sample_points = [0.5]
-                    print("Couldn't parse sample point, using default")
         else:
             # Multiple values provided, each is a sample point
-            print(f"Using multiple sample points")
             sample_points = []
             for s in args.samples:
                 try:
                     point = float(s.split('@')[0]) if '@' in s else float(s)
                     sample_points.append(point)
                 except ValueError:
-                    print(f"Warning: Couldn't parse sample point '{s}', skipping")
-                    
-            print(f"Parsed sample points: {sample_points}")
+                    pass
     
     # If we still don't have any samples, use default
     if not sample_points:
@@ -402,13 +391,8 @@ def sample_solver(solver: KeyframeSolver, args: argparse.Namespace) -> Dict[str,
         "results": {}
     }
     
-    # Print debug info
-    print(f"Sample points: {sample_points}")
-    print(f"Splines: {solver.splines.keys()}")
-    
     # Make sure we have samples
     if not sample_points:
-        print("Warning: No sample points provided!")
         # Default to a single point at 0.5
         sample_points = [0.5]
     
@@ -546,6 +530,20 @@ def scene_cmd(args: argparse.Namespace) -> None:
     scene_command = scene_args[0]
     scene_args = scene_args[1:]
     
+    # Handle the generate command with the scene
+    if scene_command == "generate":
+        if len(scene_args) < 1:
+            print("Error: Scene generate command requires a file path.")
+            return
+        
+        # Set generate_scene and call generate_scene_cmd
+        args.generate_scene = scene_args[0]
+        if len(scene_args) > 1 and scene_args[1].isdigit():
+            args.dimensions = int(scene_args[1])
+        
+        generate_scene_cmd(args)
+        return
+    
     if scene_command == "info":
         if len(scene_args) != 1:
             print("Error: Scene info command requires a file path.")
@@ -553,27 +551,12 @@ def scene_cmd(args: argparse.Namespace) -> None:
         
         file_path = scene_args[0]
         try:
-            # First try to read the file raw to understand the structure
-            try:
-                with open(file_path, 'r') as f:
-                    content = f.read()
-                    print(f"Scene file content for debugging: {content}")
-            except Exception as read_e:
-                print(f"Warning: Could not read file for debugging: {read_e}")
-        
             # Set _deserialize method in KeyframeSolver to use replace=True
             # By monkey patching it through solver.py module
             from . import solver
             original_deserialize = solver.KeyframeSolver._deserialize
             
             def patched_deserialize(cls, data):
-                # Add a debug hook to see the structure of the data
-                print(f"Deserializing data with keys: {data.keys()}")
-                if 'splines' in data:
-                    if isinstance(data['splines'], dict):
-                        print(f"Splines is a dictionary with {len(data['splines'])} items")
-                    else:
-                        print(f"Splines is a {type(data['splines'])} with {len(data['splines'])} items")
                 return original_deserialize(cls, data)
             
             # Replace the method temporarily
@@ -611,13 +594,6 @@ def scene_cmd(args: argparse.Namespace) -> None:
             original_deserialize = solver.KeyframeSolver._deserialize
             
             def patched_deserialize(cls, data):
-                # Add a debug hook to see the structure of the data
-                print(f"Deserializing data with keys: {data.keys()}")
-                if 'splines' in data:
-                    if isinstance(data['splines'], dict):
-                        print(f"Splines is a dictionary with {len(data['splines'])} items")
-                    else:
-                        print(f"Splines is a {type(data['splines'])} with {len(data['splines'])} items")
                 return original_deserialize(cls, data)
             
             # Replace the method temporarily
@@ -949,13 +925,13 @@ def backend_cmd(args: argparse.Namespace) -> bool:
 
 
 def generate_scene_cmd(args: argparse.Namespace) -> None:
-    """Handle the generate-scene command.
+    """Handle the scene generate command.
     
     Args:
         args: Command-line arguments with scene generation options
     """
-    if not args.generate_scene:
-        print("Error: No output file specified for generate-scene command.")
+    if not hasattr(args, 'generate_scene') or not args.generate_scene:
+        print("Error: No output file specified for scene generate command.")
         return
     
     output_file = args.generate_scene
@@ -1229,10 +1205,8 @@ def main():
     
     # Commands
     parser.add_argument('--visualize', action='store_true', help="Visualize the interpolation")
-    parser.add_argument('--scene', type=str, help="Scene command (info/ls/convert/extract) with args")
+    parser.add_argument('--scene', type=str, help="Scene command (info/ls/convert/extract/generate) with args")
     parser.add_argument('--backend', type=str, help="Backend to use or backend command")
-    parser.add_argument('--generate-scene', type=str, help="Generate a scene file at the specified path")
-    parser.add_argument('--dimensions', type=int, help="Number of dimensions for generated scene (default: 3)")
     
     # Parse arguments
     args = parser.parse_args()
@@ -1247,10 +1221,6 @@ def main():
         scene_cmd(args)
         return
     
-    # Handle generate-scene command
-    if hasattr(args, 'generate_scene') and args.generate_scene:
-        generate_scene_cmd(args)
-        return
     
     # Require either input file or keyframes
     if not args.input_file and not args.keyframes:
