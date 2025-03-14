@@ -106,7 +106,7 @@ def create_solver_from_args(args: argparse.Namespace) -> KeyframeSolver:
     """
     # If an input file is provided, load from that
     if args.input_file:
-        return KeyframeSolver.load(args.input_file)
+        return KeyframeSolver.from_file(args.input_file)
     
     # Otherwise, create from keyframes arguments
     solver = KeyframeSolver(name="CommandLine")
@@ -612,7 +612,7 @@ def scene_cmd(args: argparse.Namespace) -> None:
             solver.KeyframeSolver._deserialize = classmethod(patched_deserialize)
             
             # Now try to load the file
-            solver = KeyframeSolver.load(file_path)
+            solver = KeyframeSolver.from_file(file_path)
             
             # Restore original method
             solver.KeyframeSolver._deserialize = original_deserialize
@@ -649,7 +649,7 @@ def scene_cmd(args: argparse.Namespace) -> None:
             solver.KeyframeSolver._deserialize = classmethod(patched_deserialize)
             
             # Now try to load the file
-            solver = KeyframeSolver.load(file_path)
+            solver = KeyframeSolver.from_file(file_path)
             
             # Restore original method
             solver.KeyframeSolver._deserialize = original_deserialize
@@ -673,7 +673,7 @@ def scene_cmd(args: argparse.Namespace) -> None:
         
         input_path, output_path = scene_args
         try:
-            solver = KeyframeSolver.load(input_path)
+            solver = KeyframeSolver.from_file(input_path)
             solver.save(output_path)
             print(f"Converted {input_path} to {output_path}")
         except Exception as e:
@@ -691,7 +691,7 @@ def scene_cmd(args: argparse.Namespace) -> None:
             input_path, output_path, spline_path, channel_path = scene_args
         
         try:
-            solver = KeyframeSolver.load(input_path)
+            solver = KeyframeSolver.from_file(input_path)
             
             if '.' in spline_path and channel_path is None:
                 # Format is "spline.channel"
@@ -995,7 +995,7 @@ def generate_scene_cmd(args: argparse.Namespace) -> None:
     if hasattr(args, 'input_file') and args.input_file:
         try:
             # Load the input file
-            source_solver = KeyframeSolver.load(args.input_file)
+            source_solver = KeyframeSolver.from_file(args.input_file)
             
             # Copy metadata and variables
             solver.name = source_solver.name

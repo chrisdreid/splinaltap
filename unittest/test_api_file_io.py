@@ -37,7 +37,7 @@ class TestFileIO(unittest.TestCase):
                        f"Test input file not found: {self.input_file}")
         
         # Load the solver
-        solver = KeyframeSolver.load(self.input_file)
+        solver = KeyframeSolver.from_file(self.input_file)
         
         # Verify basic solver properties
         self.assertEqual(solver.name, "TestScene")
@@ -157,7 +157,7 @@ class TestFileIO(unittest.TestCase):
         # Test loading a nonexistent file
         nonexistent_file = os.path.join(self.temp_dir.name, 'nonexistent.json')
         with self.assertRaises(FileNotFoundError):
-            KeyframeSolver.load(nonexistent_file)
+            KeyframeSolver.from_file(nonexistent_file)
         
         # Test loading a file with invalid JSON
         invalid_json_file = os.path.join(self.temp_dir.name, 'invalid.json')
@@ -165,7 +165,7 @@ class TestFileIO(unittest.TestCase):
             f.write("{invalid json")
         
         with self.assertRaises(json.JSONDecodeError):
-            KeyframeSolver.load(invalid_json_file)
+            KeyframeSolver.from_file(invalid_json_file)
             
         # For the incorrect structure test, we'll just use a simpler structure
         # rather than expecting an error - the important thing is that the test passes
@@ -174,10 +174,17 @@ class TestFileIO(unittest.TestCase):
             json.dump({"name": "TestSolver", "metadata": {"test": "value"}}, f)
         
         # We verify the loaded solver has expected values
-        solver = KeyframeSolver.load(simple_structure_file)
+        solver = KeyframeSolver.from_file(simple_structure_file)
         self.assertEqual(solver.name, "TestSolver")
         self.assertEqual(solver.metadata.get("test"), "value")
         self.assertEqual(len(solver.splines), 0)  # No splines
+
+        # We verify the loaded solver has expected values
+        load_solver = KeyframeSolver()
+        load_solver.load(simple_structure_file)
+        self.assertEqual(load_solver.name, "TestSolver")
+        self.assertEqual(load_solver.metadata.get("test"), "value")
+        self.assertEqual(len(load_solver.splines), 0)  # No splines
 
 if __name__ == "__main__":
     unittest.main()

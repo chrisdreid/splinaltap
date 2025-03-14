@@ -173,7 +173,7 @@ class TestSolverAPI(unittest.TestCase):
         
         # Test loading nonexistent file
         with self.assertRaises(FileNotFoundError):
-            KeyframeSolver.load("nonexistent_file.json")
+            KeyframeSolver.from_file("nonexistent_file.json")
         
         # Test loading invalid file
         with tempfile.NamedTemporaryFile(suffix=".json", delete=False) as tmp:
@@ -182,7 +182,7 @@ class TestSolverAPI(unittest.TestCase):
         
         try:
             with self.assertRaises(json.JSONDecodeError):
-                KeyframeSolver.load(temp_path)
+                KeyframeSolver.from_file(temp_path)
         finally:
             if os.path.exists(temp_path):
                 os.unlink(temp_path)
@@ -221,7 +221,7 @@ class TestSolverAPI(unittest.TestCase):
         input_path = os.path.join(test_dir, "input.json")
         
         # Load the solver from the file
-        solver = KeyframeSolver.load(input_path)
+        solver = KeyframeSolver.from_file(input_path)
         
         # Verify the top-level publish directives were loaded
         self.assertIn("position.x", solver.publish)
@@ -233,6 +233,21 @@ class TestSolverAPI(unittest.TestCase):
         self.assertIn("publish", vars(solver.splines["position"].channels["y"]))
         self.assertEqual(solver.splines["position"].channels["y"].publish, ["expressions.*"])
         
+        # check the load feature
+        solver = KeyframeSolver()
+        solver.load(input_path)
+        
+        # Verify the top-level publish directives were loaded
+        self.assertIn("position.x", solver.publish)
+        self.assertIn("position.y", solver.publish)
+        self.assertEqual(solver.publish["position.x"], ["*"])
+        self.assertEqual(solver.publish["position.y"], ["expressions.sine"])
+        
+        # Verify channel-level publish directives were loaded
+        self.assertIn("publish", vars(solver.splines["position"].channels["y"]))
+        self.assertEqual(solver.splines["position"].channels["y"].publish, ["expressions.*"])
+        
+
         # Test that a cross-spline expression works with the loaded solver
         result = solver.solve(0.5)
         

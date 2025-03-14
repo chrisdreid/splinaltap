@@ -241,7 +241,7 @@ def solver_serialization_example():
     # Load back the JSON version
     if saved_files:
         json_file = os.path.join(temp_dir, "animation.json")
-        loaded_solver = KeyframeSolver.load(json_file)
+        loaded_solver = KeyframeSolver.from_file(json_file)
         print(f"Loaded solver: {loaded_solver.name}")
         print(f"Metadata: {loaded_solver.metadata}")
         print(f"Spline names: {loaded_solver.get_spline_names()}")

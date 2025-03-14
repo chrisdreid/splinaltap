@@ -106,7 +106,7 @@ def create_solver_from_args(args: argparse.Namespace) -> Solver:
     """
     # If an input file is provided, load from that
     if args.input_file:
-        return KeyframeSolver.load(args.input_file)
+        return KeyframeSolver.from_file(args.input_file)
     
     # Otherwise, create from keyframes arguments
     solver = KeyframeSolver(name="CommandLine")
@@ -465,7 +465,7 @@ def scene_cmd(args: argparse.Namespace) -> None:
         
         file_path = scene_args[0]
         try:
-            solver = Solver.load(file_path)
+            solver = Solver.from_file(file_path)
             print(f"Solver: {solver.name}")
             print(f"Metadata: {solver.metadata}")
             print(f"Range: {solver.range}")
@@ -486,7 +486,7 @@ def scene_cmd(args: argparse.Namespace) -> None:
         
         file_path = scene_args[0]
         try:
-            solver = Solver.load(file_path)
+            solver = Solver.from_file(file_path)
             print(f"Solver: {solver.name}")
             
             for name in solver.get_spline_names():
@@ -501,7 +501,7 @@ def scene_cmd(args: argparse.Namespace) -> None:
         
         input_path, output_path = scene_args
         try:
-            solver = Solver.load(input_path)
+            solver = Solver.from_file(input_path)
             solver.save(output_path)
             print(f"Converted {input_path} to {output_path}")
         except Exception as e:
@@ -519,7 +519,7 @@ def scene_cmd(args: argparse.Namespace) -> None:
             input_path, output_path, spline_path, channel_path = scene_args
         
         try:
-            solver = Solver.load(input_path)
+            solver = Solver.from_file(input_path)
             
             if '.' in spline_path and channel_path is None:
                 # Format is "spline.channel"
@@ -750,7 +750,7 @@ def generate_scene_cmd(args: argparse.Namespace) -> None:
     if hasattr(args, 'input_file') and args.input_file:
         try:
             # Load the input file
-            source_solver = Solver.load(args.input_file)
+            source_solver = Solver.from_file(args.input_file)
             
             # Copy metadata and variables
             solver.name = source_solver.name

@@ -1,7 +1,7 @@
 """
 Spline class for SplinalTap interpolation.
 
-A Spline represents a complete animation curve or property composed of multiple channels.
+A Spline represents a complete curve or property composed of multiple channels.
 For example, a "position" spline might have "x", "y", and "z" channels.
 """
 
@@ -12,7 +12,7 @@ from .expression import ExpressionEvaluator
 
 
 class Spline:
-    """A spline representing a complete animation curve with multiple channels."""
+    """A spline representing a complete curve with multiple channels."""
     
     def __init__(
         self, 
@@ -29,6 +29,9 @@ class Spline:
         self.variables = variables or {}
         self.channels: Dict[str, Channel] = {}
         self._expression_evaluator = ExpressionEvaluator(self.variables)
+    
+    def __repr__(self) -> str:
+        return f"{self.__class__.__name__}(range={self.range}, variables={self.variables}, channels={self.channels})"
     
     def add_channel(
         self, 
@@ -51,7 +54,9 @@ class Spline:
             The newly created channel
         """
         if name in self.channels and not replace:
+            return self.channels[name]
             raise ValueError(f"Channel '{name}' already exists in this spline")
+        
             
         # Create a new channel with the shared variables
         channel = Channel(

@@ -47,6 +47,9 @@ class KeyframeSolver:
         self.range: Tuple[float, float] = (0.0, 1.0)
         self.publish: Dict[str, List[str]] = {}
     
+    def __repr__(self) -> str:
+        return f"{self.__class__.__name__}(name={self.name}, splines={self.splines}, metadata={self.metadata}, variables={self.variables}, range={self.range}, publish={self.publish})"
+    
     def create_spline(self, name: str) -> Spline:
         """Create a new spline in this solver.
         
@@ -316,7 +319,7 @@ class KeyframeSolver:
         """
         # Start with basic information
         data = {
-            "version": "2.0",  # Update version for new publish feature
+            "version": KEYFRAME_SOLVER_FORMAT_VERSION,  # Update version for new publish feature
             "name": self.name,
             "metadata": self.metadata,
             "range": self.range,
@@ -406,7 +409,7 @@ class KeyframeSolver:
         return data
     
     @classmethod
-    def load(cls, filepath: str, format: Optional[str] = None) -> 'KeyframeSolver':
+    def from_file(cls, filepath: str, format: Optional[str] = None) -> 'KeyframeSolver':
         """Load a solver from a file.
         
         Args:
@@ -416,6 +419,7 @@ class KeyframeSolver:
         Returns:
             The loaded Solver
         """
+        
         # Determine format from extension if not specified
         if format is None:
             ext = os.path.splitext(filepath)[1].lower()
@@ -452,6 +456,36 @@ class KeyframeSolver:
             
         return cls._deserialize(solver_data)
     
+   
+    def load(self, filepath: str, format: Optional[str] = None) -> 'KeyframeSolver':
+        """Load a solver from a file.
+            Updates the solver in place # not efficient with copy attrs
+
+        Args:
+            filepath: The path to load from
+            format: Optional format override, one of ('json', 'pickle', 'yaml', 'numpy')
+            
+        Returns:
+            The loaded Solver
+        """
+        
+        # Load the data into the current instance
+        loaded_instance = self.__class__.from_file(filepath, format=format)
+        
+        # Copy all attributes from the loaded instance to self
+        loaded_dict = vars(loaded_instance)
+        
+        # Copy all attributes to self
+        for attr_name, attr_value in loaded_dict.items():
+            setattr(self, attr_name, attr_value)
+        
+        # delete loaded_instance and loaded_dict
+        del loaded_instance
+        del loaded_dict
+        
+        # for backward compatibility return the instance
+        return self
+    
     @classmethod
     def _deserialize(cls, data: Dict[str, Any]) -> 'KeyframeSolver':
         """Deserialize a solver from a dictionary.
@@ -462,11 +496,11 @@ class KeyframeSolver:
         Returns:
             The deserialized Solver
         """
-        # Check version - require version 2.0
+        # Check version - require version KeyframeSolverFormatVersion
         if "version" in data:
             file_version = data["version"]
-            if file_version != "2.0":
-                raise ValueError(f"Unsupported KeyframeSolver file version: {file_version}. Current version is 2.0.")
+            if file_version != KEYFRAME_SOLVER_FORMAT_VERSION:
+                raise ValueError(f"Unsupported KeyframeSolver file version: {file_version}. Current version is {KEYFRAME_SOLVER_FORMAT_VERSION}.")
         
         # Create a new solver
         solver = cls(name=data.get("name", "Untitled"))

@@ -155,8 +155,10 @@ quant_noise.add_keyframe(at=1.0, value="randint([0, 5]) * 0.2")
 solver.save("parameter_data.json")
 
 # Load from file
-loaded = KeyframeSolver.load("parameter_data.json")
-
+loaded = KeyframeSolver.from_file("parameter_data.json")
+# or 
+# loaded = KeyframeSolver()
+# loaded.load("parameter_data.json")
 # Evaluate at multiple positions
 for t in [0, 0.25, 0.5, 0.75, 1.0]:
     result = loaded.solve(t)
@@ -253,9 +255,11 @@ pip install cupy-cuda12x
 pip install "jax[cuda]" -f https://storage.googleapis.com/jax-releases/jax_cuda_releases.html
 ```
 
-### Testing Optional Dependencies
 
-To verify that each optional dependency is installed and working correctly, you can use the following tests:
+<details>
+<summary> [Click to Expand] To verify that each optional dependency is installed and working correctly </summary>
+
+### Testing Optional Dependencies
 
 #### Testing NumPy Installation
 
@@ -370,6 +374,7 @@ if 'jax' in backends:
 else:
     print("JAX is not installed or not properly configured")
 ```
+</details> 
 
 #### Testing All Backends with the CLI
 
@@ -1057,7 +1062,7 @@ solver.save("example.yaml", format="yaml")
 solver.save("example.pkl", format="pickle")
 
 # Load from file
-loaded_solver = KeyframeSolver.load("example.json")
+loaded_solver = KeyframeSolver.from_file("example.json")
 print(f"Loaded: {loaded_solver.name}")
 print(f"Metadata: {loaded_solver.metadata}")
 print(f"Splines: {list(loaded_solver.splines.keys())}")

@@ -75,7 +75,10 @@ class Channel:
         self.variables = variables or {}
         self.publish = publish or []
         self._expression_evaluator = None
-        
+    
+    def __repr__(self) -> str:
+        return f"{self.__class__.__name__}(interpolation={self.interpolation}, min_max={self.min_max}, keyframes={self.keyframes}, variables={self.variables}, publish={self.publish})"
+    
     def add_keyframe(
         self, 
         at: float, 
