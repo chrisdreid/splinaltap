@@ -8,10 +8,13 @@ It represents a complete animation or property set, like a scene in 3D software.
 import os
 import json
 import pickle
-from typing import Dict, List, Optional, Union, Any, Tuple
+import ast
+from collections import defaultdict
+from typing import Dict, List, Optional, Union, Any, Tuple, Set, Callable
 
 from .spline import Spline
 from .expression import ExpressionEvaluator
+from .backends import get_math_functions
 
 # KeyframeSolver file format version
 KEYFRAME_SOLVER_FORMAT_VERSION = "2.0"
@@ -31,6 +34,52 @@ except ImportError:
     HAS_YAML = False
 
 
+class DependencyExtractor(ast.NodeVisitor):
+    """
+    Visits an AST and records all Name nodes that might be channel references.
+    Excludes known math functions, known constants, etc.
+    """
+    def __init__(self, safe_funcs, safe_constants, known_variables):
+        super().__init__()
+        self.safe_funcs = safe_funcs
+        self.safe_constants = safe_constants
+        self.known_variables = known_variables
+        self.references: Set[str] = set()
+
+    def visit_Name(self, node: ast.Name):
+        # If not in safe funcs/constants, record as potential dependency
+        if (
+            node.id not in self.safe_funcs
+            and node.id not in self.safe_constants
+            and node.id not in self.known_variables
+            and node.id != 't'  # or other built-in placeholders
+        ):
+            self.references.add(node.id)
+        self.generic_visit(node)
+
+
+def extract_expression_dependencies(expr_str: str,
+                                    safe_funcs,
+                                    safe_constants,
+                                    known_variables) -> Set[str]:
+    """
+    Parse the expression into an AST, then extract any names that might be channel references.
+    """
+    # Replace ^ with **, etc. (mirror your parse_expression steps)
+    expr_str = expr_str.replace('^', '**')
+    expr_str = expr_str.replace('@', 't')
+    expr_str = expr_str.replace('?', 'rand()')
+
+    try:
+        tree = ast.parse(expr_str, mode='eval')
+    except SyntaxError:
+        return set()  # Return empty if it doesn't parse
+
+    extractor = DependencyExtractor(safe_funcs, safe_constants, known_variables)
+    extractor.visit(tree.body)
+    return extractor.references
+
+
 class KeyframeSolver:
     """A solver containing multiple splines for complex animation."""
     
@@ -46,6 +95,10 @@ class KeyframeSolver:
         self.variables: Dict[str, Any] = {}
         self.range: Tuple[float, float] = (0.0, 1.0)
         self.publish: Dict[str, List[str]] = {}
+        # Cache for topological solver
+        self._dependency_graph = None
+        self._topo_order = None
+        self._evaluation_cache = {}
     
     def __repr__(self) -> str:
         return f"{self.__class__.__name__}(name={self.name}, splines={self.splines}, metadata={self.metadata}, variables={self.variables}, range={self.range}, publish={self.publish})"
@@ -119,9 +172,278 @@ class KeyframeSolver:
             raise ValueError(f"Source must be in 'spline.channel' format, got {source}")
             
         self.publish[source] = targets
+        
+        # Reset dependency graph and topo order since publish relationships changed
+        self._dependency_graph = None
+        self._topo_order = None
+        
+    def _build_dependency_graph(self) -> Dict[str, Set[str]]:
+        """
+        Build a directed graph of channel dependencies (node = 'spline.channel').
+        Edge from X->Y if Y depends on X (i.e. Y's expression references X or Y is published by X).
+        """
+        graph = defaultdict(set)
+        
+        # 1) Gather references for math/variables from ExpressionEvaluator
+        math_funcs = get_math_functions()
+        
+        safe_funcs = {
+            'sin': math_funcs['sin'],
+            'cos': math_funcs['cos'],
+            'tan': math_funcs['tan'],
+            'sqrt': math_funcs['sqrt'],
+            'log': math_funcs['log'],
+            'exp': math_funcs['exp'],
+            'pow': math_funcs['pow'],
+            'abs': abs,
+            'max': max,
+            'min': min,
+            'round': round,
+            'rand': math_funcs['rand'],
+            'randint': math_funcs['randint']
+        }
+        safe_constants = {'pi': math_funcs['pi'], 'e': math_funcs['e']}
+        known_variables = set(self.variables.keys())  # solver-level variables
+
+        def node_key(spline_name, channel_name):
+            return f"{spline_name}.{channel_name}"
+
+        # 2) Build a list of all nodes
+        all_nodes = []
+        for spline_name, spline in self.splines.items():
+            for channel_name in spline.channels:
+                all_nodes.append(node_key(spline_name, channel_name))
+        
+        # Ensure each node appears in graph with an empty set (in case no dependencies)
+        for node in all_nodes:
+            graph[node] = set()
+        
+        # 3) Inspect each channel for expression references
+        for spline_name, spline in self.splines.items():
+            for channel_name, channel in spline.channels.items():
+                current_node = node_key(spline_name, channel_name)
+
+                for kf in channel.keyframes:
+                    # If the keyframe is an expression (string), parse it
+                    # If your system stores an already-compiled callable, you may want
+                    # to store the original expression string so we can re-parse it for deps
+                    expr_str = None
+                    if isinstance(kf.value, str):
+                        expr_str = kf.value
+                    # If kf.value is a callable that wraps a string expression
+                    elif hasattr(kf.value, '__splinaltap_expr__'):
+                        expr_str = kf.value.__splinaltap_expr__
+                    
+                    if expr_str:
+                        deps = extract_expression_dependencies(
+                            expr_str,
+                            safe_funcs,
+                            safe_constants,
+                            known_variables
+                        )
+                        # For each dep, if it has a '.', treat it as "spline.channel"
+                        # else treat as "currentSpline.dep"
+                        for ref in deps:
+                            if '.' in ref:
+                                dependency_node = ref
+                            else:
+                                # same spline
+                                dependency_node = node_key(spline_name, ref)
+                                
+                            # Only add if the dependency node actually exists
+                            if dependency_node in all_nodes:
+                                # Add edge dependency_node -> current_node
+                                graph[dependency_node].add(current_node)
+
+                # 4) Also handle "publish" list
+                # If this channel publishes to otherChannel,
+                # we interpret that otherChannel depends on this channel
+                if hasattr(channel, 'publish') and channel.publish:
+                    for target_ref in channel.publish:
+                        if target_ref == "*":
+                            # Global means "anyone can see it," but we don't know the specifics
+                            # Usually we skip or handle differently
+                            continue
+                        else:
+                            if '.' in target_ref:
+                                target_node = target_ref
+                            else:
+                                target_node = node_key(spline_name, target_ref)
+                                
+                            # Only add if the target node actually exists
+                            if target_node in all_nodes:
+                                # current_node -> target_node (current publishes to target)
+                                graph[current_node].add(target_node)
+
+        # 5) Handle solver-level publish directives
+        for source, targets in self.publish.items():
+            if source in all_nodes:
+                for target in targets:
+                    if target == "*":
+                        # Global publish - all channels can depend on this source
+                        for node in all_nodes:
+                            if node != source:  # Avoid self-dependencies
+                                graph[source].add(node)
+                    elif '.' in target and target in all_nodes:
+                        # Specific target channel
+                        graph[source].add(target)
+                    elif target.endswith(".*"):
+                        # Wildcard for all channels in a spline
+                        spline_prefix = target[:-1]  # Remove the ".*"
+                        for node in all_nodes:
+                            if node.startswith(spline_prefix) and node != source:
+                                graph[source].add(node)
+
+        return graph
+        
+    def _topological_sort(self, graph: Dict[str, Set[str]]) -> List[str]:
+        """
+        Returns a list of node_keys (e.g., 'spline.channel') in valid topological order.
+        Raises ValueError if there's a cycle.
+        """
+        # 1) Compute in-degrees
+        in_degree = {node: 0 for node in graph}
+        for node, dependents in graph.items():
+            for dep in dependents:
+                in_degree[dep] += 1
+
+        # 2) Initialize queue with all nodes of in-degree 0
+        queue = [n for n, deg in in_degree.items() if deg == 0]
+        topo_order = []
+
+        while queue:
+            current = queue.pop()
+            topo_order.append(current)
+
+            # Decrement in-degree of all dependents
+            for dep in graph[current]:
+                in_degree[dep] -= 1
+                if in_degree[dep] == 0:
+                    queue.append(dep)
+
+        if len(topo_order) != len(graph):
+            raise ValueError("Cycle detected in channel dependencies.")
+
+        return topo_order
     
-    def solve(self, position: float, external_channels: Optional[Dict[str, Any]] = None) -> Dict[str, Dict[str, Any]]:
-        """Solve all splines at a specific position.
+    def _normalize_position(self, position: float) -> float:
+        """Apply range normalization to a position.
+        
+        Args:
+            position: The position to normalize
+            
+        Returns:
+            Normalized position in 0-1 range
+        """
+        min_t, max_t = self.range
+        if min_t != 0.0 or max_t != 1.0:
+            # Normalize the position to the 0-1 range
+            if position >= min_t and position <= max_t:
+                return (position - min_t) / (max_t - min_t)
+            elif position < min_t:
+                return 0.0
+            else:  # position > max_t
+                return 1.0
+        else:
+            return position
+
+    def _evaluate_channel_at_time(self, node_key: str, t: float,
+                                  external_channels: Dict[str, Any]) -> float:
+        """
+        Evaluate a single channel at time 't' (0-1 normalized), using the caching dict.
+        If we have a cached value, use it; otherwise, compute via channel's get_value.
+        This method also ensures that if the channel references another channel at time offset,
+        we do a sub-call back into _evaluate_channel_at_time(...) with a different t_sub.
+        """
+        cache_key = (node_key, t)
+        if cache_key in self._evaluation_cache:
+            return self._evaluation_cache[cache_key]
+
+        # Parse node_key into (splineName, channelName)
+        spline_name, channel_name = node_key.split('.', 1)
+        spline = self.splines[spline_name]
+        channel = spline.channels[channel_name]
+
+        # Create a channel lookup function for expression evaluation
+        def channel_lookup(sub_chan_name, sub_t):
+            """Helper function that uses _evaluate_channel_at_time to get dependencies at sub_t."""
+            # sub_chan_name might be 'otherSpline.otherChan' or just 'otherChan' for same spline
+            if '.' not in sub_chan_name:
+                # same spline
+                sub_node_key = f"{spline_name}.{sub_chan_name}"
+            else:
+                sub_node_key = sub_chan_name
+            return self._evaluate_channel_at_time(sub_node_key, sub_t, external_channels)
+
+        # Prepare variable context for channel evaluation
+        combined_vars = {}
+        # Add external_channels
+        if external_channels:
+            combined_vars.update(external_channels)
+        # Add solver-level variables
+        combined_vars.update(self.variables)
+        # Add the channel lookup function for cross-channel references
+        combined_vars['__channel_lookup__'] = channel_lookup
+
+        # Evaluate the channel with the combined variables
+        val = channel.get_value(t, combined_vars)
+
+        # Store in cache
+        self._evaluation_cache[cache_key] = val
+        return val
+
+    def solve(self, position: float, external_channels: Optional[Dict[str, Any]] = None, method: str = "topo") -> Dict[str, Dict[str, Any]]:
+        """Solve all splines at a specific position using topological ordering by default.
+        
+        Args:
+            position: The position to solve at
+            external_channels: Optional external channel values
+            method: Solver method ('topo' or 'ondemand', default: 'topo')
+            
+        Returns:
+            A dictionary of spline names to channel value dictionaries
+        """
+        # Allow specifying the solver method
+        if method == "ondemand":
+            return self.solve_on_demand(position, external_channels)
+        
+        # Use topological ordering by default
+        # Build or reuse graph
+        if self._dependency_graph is None or self._topo_order is None:
+            try:
+                self._dependency_graph = self._build_dependency_graph()
+                self._topo_order = self._topological_sort(self._dependency_graph)
+            except ValueError as e:
+                # If there's a cycle, fall back to on-demand method
+                print(f"Warning: {e}. Falling back to on-demand evaluation.")
+                return self.solve_on_demand(position, external_channels)
+
+        # Clear evaluation cache for this solve
+        self._evaluation_cache = {}
+
+        # Normalize the position
+        normalized_t = self._normalize_position(position)
+
+        # Evaluate in topological order
+        result_by_node = {}
+        external_channels = external_channels or {}
+
+        for node in self._topo_order:
+            val = self._evaluate_channel_at_time(node, normalized_t, external_channels)
+            result_by_node[node] = val
+
+        # Convert to {spline: {channel: value}} format
+        out = {}
+        for node_key, val in result_by_node.items():
+            spline_name, chan_name = node_key.split('.', 1)
+            if spline_name not in out:
+                out[spline_name] = {}
+            out[spline_name][chan_name] = val
+
+        return out
+
+    def solve_on_demand(self, position: float, external_channels: Optional[Dict[str, Any]] = None) -> Dict[str, Dict[str, Any]]:
+        """Solve all splines at a specific position using the original on-demand method.
         
         Args:
             position: The position to solve at
@@ -133,17 +455,7 @@ class KeyframeSolver:
         result = {}
         
         # Apply range normalization if needed
-        min_t, max_t = self.range
-        if min_t != 0.0 or max_t != 1.0:
-            # Normalize the position to the 0-1 range
-            if position >= min_t and position <= max_t:
-                normalized_position = (position - min_t) / (max_t - min_t)
-            elif position < min_t:
-                normalized_position = 0.0
-            else:  # position > max_t
-                normalized_position = 1.0
-        else:
-            normalized_position = position
+        normalized_position = self._normalize_position(position)
             
         # First pass: calculate channel values without expressions that might depend on other channels
         channel_values = {}
@@ -208,8 +520,6 @@ class KeyframeSolver:
                     # Check for spline-level access (spline.*)
                     elif any(target.endswith(".*") and channel_path.startswith(target[:-1]) for target in targets):
                         can_access = True
-                    # For debugging, print channel path and any wildcard matches
-                    # print(f"Channel {channel_path} checking against targets {targets}, can_access={can_access}")
                         
                     if can_access and source in channel_values:
                         # Extract just the channel name for easier access in expressions
@@ -254,18 +564,19 @@ class KeyframeSolver:
         
         return result
         
-    def solve_multiple(self, positions: List[float], external_channels: Optional[Dict[str, Any]] = None) -> List[Dict[str, Dict[str, Any]]]:
+    def solve_multiple(self, positions: List[float], external_channels: Optional[Dict[str, Any]] = None, method: str = "topo") -> List[Dict[str, Dict[str, Any]]]:
         """Solve all splines at multiple positions.
         
         Args:
             positions: List of positions to solve at
             external_channels: Optional external channel values
+            method: Solver method ('topo' or 'ondemand', default: 'topo')
             
         Returns:
             A list of result dictionaries, one for each position
         """
         # Apply range normalization separately to each position
-        return [self.solve(position, external_channels) for position in positions]
+        return [self.solve(position, external_channels, method=method) for position in positions]
     
     def save(self, filepath: str, format: Optional[str] = None) -> None:
         """Save the solver to a file.

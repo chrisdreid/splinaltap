@@ -384,46 +384,49 @@ def sample_solver(solver: KeyframeSolver, args: argparse.Namespace) -> Dict[str,
     # Ensure sample_points is now populated
     assert sample_points, "Sample points should not be empty at this point"
     
+    # Get solver method from args if specified, default to 'topo'
+    solver_method = getattr(args, 'solver_method', 'topo')
+    
     # Initialize results
     results = {
         "version": "2.0",
         "name": solver.name,
         "metadata": solver.metadata,
         "samples": sample_points,
+        "solver_method": solver_method,
         "results": {}
     }
     
-    # Make sure we have samples
-    if not sample_points:
-        # Default to a single point at 0.5
-        sample_points = [0.5]
+    # Use the solver's evaluation method to compute all values at once
+    all_results = solver.solve_multiple(sample_points, method=solver_method)
     
-    # Sample the solver at each point
-    for at in sample_points:
-        # For each spline
-        for spline_name, spline in solver.splines.items():
-            # Initialize spline in results if needed
-            if spline_name not in results["results"]:
-                results["results"][spline_name] = {}
-                
-            # For each channel in the spline
-            for channel_name, channel in spline.channels.items():
-                # Initialize channel in results if needed
-                if channel_name not in results["results"][spline_name]:
-                    results["results"][spline_name][channel_name] = []
-                
-                try:
-                    # Sample and store the value, with better error handling
-                    try:
-                        value = channel.get_value(at)
-                    except Exception as e:
-                        value = 0.0  # Default value on error
-                        
+    # Process results into the format expected by the CLI
+    for i, at in enumerate(sample_points):
+        if i < len(all_results):
+            # Get the results for this sample point
+            sample_result = all_results[i]
+            
+            # Add to output structure
+            for spline_name, spline_data in sample_result.items():
+                # Initialize spline in results if needed
+                if spline_name not in results["results"]:
+                    results["results"][spline_name] = {}
+                    
+                # For each channel
+                for channel_name, value in spline_data.items():
+                    # Initialize channel in results if needed
+                    if channel_name not in results["results"][spline_name]:
+                        results["results"][spline_name][channel_name] = []
+                    
+                    # Add this value to the channel
                     results["results"][spline_name][channel_name].append(value)
-                except Exception as e:
-                    # Try to ensure we have a value
-                    if len(results["results"][spline_name][channel_name]) < len(sample_points):
-                        results["results"][spline_name][channel_name].append(0.0)
+    
+    # Ensure we have values for all sample points in each channel
+    for spline_name, spline_data in results["results"].items():
+        for channel_name, values in spline_data.items():
+            # Fill in missing values with 0.0
+            while len(values) < len(sample_points):
+                values.append(0.0)
     
     return results
 
@@ -1244,6 +1247,8 @@ def create_parser():
     parser.add_argument('--range', type=str, help="Sample range min,max (for integer sample count)")
     parser.add_argument('--use-indices', action='store_true', help="Use absolute indices instead of normalized 0-1 range")
     parser.add_argument('--variables', type=str, help="Variables in format 'name1=value1,name2=value2,...'")
+    parser.add_argument('--solver-method', type=str, choices=['topo', 'ondemand'], default='topo',
+                        help="Solver method to use (default: topo)")
     
     return parser
 
