@@ -5,7 +5,7 @@ A Spline represents a complete curve or property composed of multiple channels.
 For example, a "position" spline might have "x", "y", and "z" channels.
 """
 
-from typing import Dict, List, Optional, Tuple, Union, Any
+from typing import Dict, List, Optional, Tuple, Union, Any, Callable
 
 from .channel import Channel
 from .expression import ExpressionEvaluator
@@ -17,7 +17,8 @@ class Spline:
     def __init__(
         self, 
         range: Optional[Tuple[float, float]] = None,
-        variables: Optional[Dict[str, Any]] = None
+        variables: Optional[Dict[str, Any]] = None,
+        callbacks: Optional[Dict[str, Callable]] = None
     ):
         """Initialize a spline.
         
@@ -69,6 +70,17 @@ class Spline:
         self.channels[name] = channel
         return channel
     
+    def set_publish(self, channel_name: str, publish: List[str]) -> None:
+        """Set the publish directive for a channel.
+        
+        Args:
+            channel_name: The channel name
+            publish: The publish directive
+        """
+        self.channels[channel_name].publish = publish
+        # needs to send callback up to the solver
+        
+        
     def get_channel(self, name: str) -> Channel:
         """Get a channel by name.
         

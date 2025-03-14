@@ -585,7 +585,7 @@ SplinalTap supports two main JSON file formats: single-dimension interpolators a
   "range": [0.0, 1.0],
   "metadata": {
     "description": "Simple animation curve",
-    "author": "chris@splinaltap.com"
+    "author": "user@splinaltap.com"
   },
   "variables": {
     "amplitude": 2.5,
@@ -725,7 +725,7 @@ This document describes the JSON format for defining animation splines, includin
 - **version**: String - The format version (required to be "2.0").
 - **name**: String - Name of the solver or animation (e.g., "MySolver").
 - **range**: Array[Float, Float] - Global time/position range for all splines (e.g., [0.0, 1.0]).
-- **metadata**: Object - Optional info like "description" (string) and "author" (string, e.g., "chris@splinaltap.com").
+- **metadata**: Object - Optional info like "description" (string) and "author" (string, e.g., "user@splinaltap.com").
 - **variables**: Object - Named constants (e.g., "amplitude": 2.5) usable in expressions.
 - **publish**: Object - (Optional) Top-level subscription rules (see Publishing Values).
 - **splines**: Object - Contains spline definitions, each with channels.
