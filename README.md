@@ -458,7 +458,7 @@ SplinalTap can be used in two ways, both of which keep all code contained within
 python /path/to/python splinaltap --help
 
 # If installed with pip (production mode):
-python python splinaltap --help
+python splinaltap --help
 ```
 
 **IMPORTANT**: All CLI functionality is contained entirely within the `splinaltap` directory. 
@@ -475,48 +475,48 @@ The CLI provides several unified commands that follow a consistent pattern. Here
 
 ```bash
 # Default behavior: sample/evaluate interpolated values (no command needed)
-python python splinaltap --input-file input.json --samples 0.25 0.5 0.75 --output-file values.csv
-python python splinaltap --input-file input.json --samples 1000 --range 0,1 --output-file evenly_spaced.csv
+python splinaltap --input-file input.json --samples 0.25 0.5 0.75 --output-file values.csv
+python splinaltap --input-file input.json --samples 1000 --range 0,1 --output-file evenly_spaced.csv
 
 # Visualize interpolation
-python python splinaltap --visualize --input-file input.json --methods cubic --output-file output.png
+python splinaltap --visualize --input-file input.json --methods cubic --output-file output.png
 
 # Compare multiple interpolation methods (requires --visualize command)
-python python splinaltap --visualize --input-file input.json --methods linear cubic hermite bezier --compare --output-file comparison.png
+python splinaltap --visualize --input-file input.json --methods linear cubic hermite bezier --compare --output-file comparison.png
 
 # Scene management with unified --scene command
-python python splinaltap --scene "info scene.json"                         # Show scene info
-python python splinaltap --scene "ls scene.json"                           # List interpolators
-python python splinaltap --scene "convert input.json output.yaml"          # Convert formats
-python python splinaltap --scene "extract scene.json new.json position"    # Extract full interpolator
-python python splinaltap --scene "extract scene.json pos_x.json position.x" # Extract specific dimension
+python splinaltap --scene "info scene.json"                         # Show scene info
+python splinaltap --scene "ls scene.json"                           # List interpolators
+python splinaltap --scene "convert input.json output.yaml"          # Convert formats
+python splinaltap --scene "extract scene.json new.json position"    # Extract full interpolator
+python splinaltap --scene "extract scene.json pos_x.json position.x" # Extract specific dimension
 
 # Backend management with unified --backend command
-python python splinaltap --backend                 # Show current backend
-python python splinaltap --backend ls              # List all backends
-python python splinaltap --backend info            # Show detailed info
-python python splinaltap --backend numpy           # Set backend to numpy
-python python splinaltap --backend best            # Use best available backend
-python python splinaltap --backend cupy --input-file input.json --samples 100  # Run with cupy backend
+python splinaltap --backend                 # Show current backend
+python splinaltap --backend ls              # List all backends
+python splinaltap --backend info            # Show detailed info
+python splinaltap --backend numpy           # Set backend to numpy
+python splinaltap --backend best            # Use best available backend
+python splinaltap --backend cupy --input-file input.json --samples 100  # Run with cupy backend
 
 # Define and use keyframes directly on command line (0-1 normalized range)
-python python splinaltap --keyframes 0:0@cubic 0.5:10@cubic 1:0@cubic --samples 100 --output-file from_cli.csv
+python splinaltap --keyframes 0:0@cubic 0.5:10@cubic 1:0@cubic --samples 100 --output-file from_cli.csv
 
 # Use different output formats with --content-type
-python python splinaltap --keyframes 0:0 0.5:10 1:0 --samples 10 --content-type json
-python python splinaltap --keyframes 0:0 0.5:10 1:0 --samples 10 --content-type csv --output-file output.csv
-python python splinaltap --keyframes 0:0 0.5:10 1:0 --samples 10 --content-type yaml
-python python splinaltap --keyframes 0:0 0.5:10 1:0 --samples 10 --content-type text
+python splinaltap --keyframes 0:0 0.5:10 1:0 --samples 10 --content-type json
+python splinaltap --keyframes 0:0 0.5:10 1:0 --samples 10 --content-type csv --output-file output.csv
+python splinaltap --keyframes 0:0 0.5:10 1:0 --samples 10 --content-type yaml
+python splinaltap --keyframes 0:0 0.5:10 1:0 --samples 10 --content-type text
 
 # Generate scene files to use as starting points
-python python splinaltap --generate-scene template.json
-python python splinaltap --generate-scene my_template.json --keyframes 0:0 0.5:10 1:0
-python python splinaltap --generate-scene vector_template.json --dimensions 3
-python python splinaltap --generate-scene template.yaml --content-type yaml
+python splinaltap --generate-scene template.json
+python splinaltap --generate-scene my_template.json --keyframes 0:0 0.5:10 1:0
+python splinaltap --generate-scene vector_template.json --dimensions 3
+python splinaltap --generate-scene template.yaml --content-type yaml
 
 # Work with existing files to create new scenes
-python python splinaltap --input-file existing.json --generate-scene modified.json
-python python splinaltap --input-file existing.json --generate-scene with_new_keyframes.json --keyframes 0:0 0.5:5 1:0
+python splinaltap --input-file existing.json --generate-scene modified.json
+python splinaltap --input-file existing.json --generate-scene with_new_keyframes.json --keyframes 0:0 0.5:5 1:0
 ```
 
 ### Input File Format
@@ -932,22 +932,22 @@ By default, all positions are normalized to the 0-1 range for better floating-po
 
 ```bash
 # Define keyframes directly in normalized 0-1 range and sample 100 points
-python python splinaltap --keyframes 0:0@cubic 0.5:10@cubic 1:0@cubic --samples 100 
+python splinaltap --keyframes 0:0@cubic 0.5:10@cubic 1:0@cubic --samples 100 
 
 # Use expressions in keyframes (method is optional, defaults to cubic)
-python python splinaltap --keyframes "0:0" "0.25:sin(t)" "1:t^2" --samples 100
+python splinaltap --keyframes "0:0" "0.25:sin(t)" "1:t^2" --samples 100
 
 # Include derivatives for Hermite interpolation
-python python splinaltap --keyframes "0:0@hermite{deriv=0}" "0.5:10@hermite{deriv=2}" "1:0@hermite{deriv=0}" --samples 100
+python splinaltap --keyframes "0:0@hermite{deriv=0}" "0.5:10@hermite{deriv=2}" "1:0@hermite{deriv=0}" --samples 100
 
 # Define control points for Bezier interpolation (control points are also in 0-1 space)
-python python splinaltap --keyframes "0:0@bezier{cp=0.1,0,0.2,3}" "0.5:10@bezier{cp=0.6,12,0.7,8}" "1:0@bezier{cp=0.8,-2,0.9,0}" --samples 100
+python splinaltap --keyframes "0:0@bezier{cp=0.1,0,0.2,3}" "0.5:10@bezier{cp=0.6,12,0.7,8}" "1:0@bezier{cp=0.8,-2,0.9,0}" --samples 100
 
 # Only visualization requires an explicit command
-python python splinaltap --visualize --keyframes 0:0@cubic 0.3:5@linear 0.7:2@cubic 1:10@cubic --compare
+python splinaltap --visualize --keyframes 0:0@cubic 0.3:5@linear 0.7:2@cubic 1:10@cubic --compare
 
 # Use variables in expressions
-python python splinaltap --keyframes "0:0" "0.5:a*sin(t)" "1:b*t" --variables "a=2.5,b=1.5" --samples 100
+python splinaltap --keyframes "0:0" "0.5:a*sin(t)" "1:b*t" --variables "a=2.5,b=1.5" --samples 100
 ```
 
 The keyframe syntax is: `position:value@method{parameters}` where:
@@ -1138,7 +1138,7 @@ phase_spline = solver.get_spline("phase")
 When using the `--scene extract` command, you're extracting a named spline from a solver file:
 ```bash
 # Extract the "coordinates" spline including all its channels
-python python splinaltap --scene "extract scene.json coordinates.json coordinates"
+python splinaltap --scene "extract scene.json coordinates.json coordinates"
 ```
 
 #### 2. Channels: Components of a Spline
@@ -1173,7 +1173,7 @@ x_value = spline.get_channel_value("x", 0.25)  # Returns 2.5
 You can extract a specific channel from a spline using the dot notation:
 ```bash
 # Extract just the x channel from the coordinates spline
-python python splinaltap --scene "extract scene.json coordinates_x.json coordinates.x"
+python splinaltap --scene "extract scene.json coordinates_x.json coordinates.x"
 ```
 
 #### 3. External Channels vs. Variables
