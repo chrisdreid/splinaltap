@@ -7,7 +7,6 @@ from .spline import Spline
 from .solver import KeyframeSolver
 from .expression import ExpressionEvaluator
 from .visualization import plot_interpolation_comparison, plot_single_interpolation
-from .compatibility import KeyframeInterpolator
 
 __version__ = "0.3.0"
 __all__ = [
@@ -18,5 +17,4 @@ __all__ = [
     "ExpressionEvaluator",
     "plot_interpolation_comparison", 
     "plot_single_interpolation",
-    "KeyframeInterpolator"  # For backward compatibility
 ]

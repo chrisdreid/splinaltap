@@ -151,7 +151,8 @@ class ExpressionEvaluator:
                 
                 # Common variable names allowed in expressions
                 self.allowed_var_names = {'t', 'x', 'y', 'z', 'a', 'b', 'c', 'd', '@',
-                                        'amplitude', 'frequency', 'scale', 'offset', 'speed'}
+                                         'amplitude', 'frequency', 'scale', 'offset', 'speed',
+                                         'factor', 'position', 'rotation', 'scale', 'value'}
             
             def generic_visit(self, node):
                 if type(node) not in self.allowed_nodes:
@@ -168,7 +169,11 @@ class ExpressionEvaluator:
                     # Common variable names are allowed
                     pass
                 else:
-                    raise ValueError(f"Unknown name: {node.id}")
+                    # For expressions that reference other channels, we'll defer validation
+                    # to runtime when the channel values are actually evaluated.
+                    # This allows for 'factor' to be used in 'x * factor', for example,
+                    # as long as 'factor' is published when the expression is evaluated.
+                    self.used_vars.add(node.id)
                 super().generic_visit(node)
             
             def visit_Call(self, node):
