@@ -17,6 +17,40 @@ Key capabilities include:
 
 Whether you're working with signal processing, function approximation, numerical analysis, or data visualization, SplinalTap provides the necessary tools to define complex interpolation behaviors with an intuitive API.
 
+
+## About splinaltap
+
+splinaltap is a Python library that provides powerful tools for working with keyframes, expressions, and spline interpolation. It allows you to define keyframes with mathematical expressions, evaluate them at any parametric position along a normalized range, and interpolate between them using various mathematical methods.
+
+### Why the Name?
+
+The name "splinaltap" is a playful nod to the mockumentary "This Is Spinal Tap" and its famous "these go to eleven" scene - because sometimes regular interpolation just isn't enough. But more importantly:
+
+- **splin**: Refers to splines, the mathematical curves used for smooth interpolation
+- **al**: Represents algorithms and algebraic expressions
+- **tap**: Describes how you can "tap into" the curve at any point to extract values
+
+## Key Features
+
+- 🔢 **Safe Expression Evaluation**: Define keyframes using string expressions that are safely evaluated using Python's AST
+- 🔄 **Multiple Interpolation Methods**: Choose from 9 different interpolation algorithms:
+  - Nearest Neighbor
+  - Linear
+  - Polynomial (Lagrange)
+  - Quadratic Spline
+  - Cubic Spline
+  - Hermite Interpolation
+  - Bezier Interpolation
+  - PCHIP (Piecewise Cubic Hermite Interpolating Polynomial)
+  - Gaussian Process Interpolation (requires NumPy)
+- 🎲 **Random Value Functions**: Generate random values in expressions:
+  - `rand()`: Returns a random float between 0 and 1
+  - `randint([min, max])`: Returns a random integer between min and max (inclusive)
+  - `randint(max)`: Returns a random integer between 0 and max (inclusive)
+- 🧮 **Variable Support**: Define and use variables in your expressions for complex mathematical transformations
+- 🖥️ **Command Line Interface**: Access all features from the command line
+
+
 ## Basic Usage
 
 ```python
@@ -164,38 +198,6 @@ for t in [0, 0.25, 0.5, 0.75, 1.0]:
     result = loaded.solve(t)
     print(f"At {t}: {result}")
 ```
-
-## About splinaltap
-
-splinaltap is a Python library that provides powerful tools for working with keyframes, expressions, and spline interpolation. It allows you to define keyframes with mathematical expressions, evaluate them at any parametric position along a normalized range, and interpolate between them using various mathematical methods.
-
-### Why the Name?
-
-The name "splinaltap" is a playful nod to the mockumentary "This Is Spinal Tap" and its famous "these go to eleven" scene - because sometimes regular interpolation just isn't enough. But more importantly:
-
-- **splin**: Refers to splines, the mathematical curves used for smooth interpolation
-- **al**: Represents algorithms and algebraic expressions
-- **tap**: Describes how you can "tap into" the curve at any point to extract values
-
-## Key Features
-
-- 🔢 **Safe Expression Evaluation**: Define keyframes using string expressions that are safely evaluated using Python's AST
-- 🔄 **Multiple Interpolation Methods**: Choose from 9 different interpolation algorithms:
-  - Nearest Neighbor
-  - Linear
-  - Polynomial (Lagrange)
-  - Quadratic Spline
-  - Cubic Spline
-  - Hermite Interpolation
-  - Bezier Interpolation
-  - PCHIP (Piecewise Cubic Hermite Interpolating Polynomial)
-  - Gaussian Process Interpolation (requires NumPy)
-- 🎲 **Random Value Functions**: Generate random values in expressions:
-  - `rand()`: Returns a random float between 0 and 1
-  - `randint([min, max])`: Returns a random integer between min and max (inclusive)
-  - `randint(max)`: Returns a random integer between 0 and max (inclusive)
-- 🧮 **Variable Support**: Define and use variables in your expressions for complex mathematical transformations
-- 🖥️ **Command Line Interface**: Access all features from the command line
 
 ## Command Line Interface
 
@@ -1140,6 +1142,50 @@ When using the `--scene extract` command, you're extracting a named spline from 
 # Extract the "coordinates" spline including all its channels
 python splinaltap --scene "extract scene.json coordinates.json coordinates"
 ```
+
+### Topological Solver
+
+SplinalTap includes a powerful topological solver that optimizes the evaluation of channel expressions that reference other channels. It works by:
+
+1. Analyzing dependencies between channels
+2. Building a dependency graph
+3. Sorting channels in topological order (dependency-first order)
+4. Using caching to avoid redundant calculations
+5. Handling advanced cases like time offsets in expressions
+
+The topological solver (default) offers several advantages over the on-demand solver:
+
+- **Efficiency**: Evaluates each channel exactly once per time point
+- **Optimal Ordering**: Ensures dependencies are calculated before dependent channels
+- **Cache Optimization**: Avoids redundant calculations for repeated references
+- **Cycle Detection**: Identifies and reports dependency cycles
+
+You can select the solver method when evaluating:
+
+```python
+# Use the default topological solver (recommended)
+results = solver.solve(0.5)
+
+# Explicitly specify the solver method
+results = solver.solve(0.5, method="topo")  # Topological (default)
+results = solver.solve(0.5, method="ondemand")  # On-demand (legacy)
+
+# Also works with multiple positions
+results = solver.solve_multiple([0.1, 0.2, 0.3], method="topo")
+```
+
+From the command line, specify the solver method:
+
+```bash
+# Use topological solver (default)
+python splinaltap --input-file data.json --samples 100
+
+# Explicitly specify the solver method
+python splinaltap --input-file data.json --samples 100 --solver-method topo
+python splinaltap --input-file data.json --samples 100 --solver-method ondemand
+```
+
+The topological solver is especially beneficial for complex dependency chains, where one channel's value depends on multiple other channels. It ensures that all dependencies are properly resolved in the correct order, improving both performance and accuracy.
 
 #### 2. Channels: Components of a Spline
 

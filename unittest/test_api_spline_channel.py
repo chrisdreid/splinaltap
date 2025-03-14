@@ -187,9 +187,10 @@ class TestSplineChannelAPI(unittest.TestCase):
         self.assertEqual(spline.channels["rotation"].interpolation, "cubic")
         self.assertEqual(spline.channels["scale"].min_max, (0.1, 2.0))
         
-        # Test adding a channel with an existing name (should raise error)
-        with self.assertRaises(ValueError):
-            spline.add_channel(name="position")
+        # Test that existing channels are returned when replace=False (default)
+        position_channel = spline.add_channel(name="position")
+        position_channel2 = spline.add_channel(name="position")
+        self.assertIs(position_channel, position_channel2)
     
     def test_spline_remove_channel(self):
         """Test removing channels from a spline."""

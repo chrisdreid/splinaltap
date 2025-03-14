@@ -6,7 +6,7 @@ allowing math expressions to be used in keyframe values and variables.
 """
 
 import ast
-from typing import Dict, Callable, Any
+from typing import Dict, Callable, Any, Set
 
 from .backends import BackendManager, get_math_functions
 
@@ -336,3 +336,58 @@ class ExpressionEvaluator:
             
             else:
                 raise ValueError(f"Unsupported boolean operator: {type(node.op).__name__}")
+                
+                
+class DependencyExtractor(ast.NodeVisitor):
+    """
+    Visits an AST and records all Name nodes that might be channel references.
+    Excludes known math functions, known constants, etc.
+    """
+    def __init__(self, safe_funcs, safe_constants, known_variables):
+        super().__init__()
+        self.safe_funcs = safe_funcs
+        self.safe_constants = safe_constants
+        self.known_variables = known_variables
+        self.references: Set[str] = set()
+
+    def visit_Name(self, node: ast.Name):
+        # If not in safe funcs/constants, record as potential dependency
+        if (
+            node.id not in self.safe_funcs
+            and node.id not in self.safe_constants
+            and node.id not in self.known_variables
+            and node.id != 't'  # or other built-in placeholders
+        ):
+            self.references.add(node.id)
+        self.generic_visit(node)
+
+
+def extract_expression_dependencies(expr_str: str,
+                                    safe_funcs,
+                                    safe_constants,
+                                    known_variables) -> Set[str]:
+    """
+    Parse the expression into an AST, then extract any names that might be channel references.
+    
+    Args:
+        expr_str: The expression string to parse
+        safe_funcs: Dictionary of safe functions (e.g., sin, cos, etc.)
+        safe_constants: Dictionary of constants (e.g., pi, e)
+        known_variables: Set of known variable names
+        
+    Returns:
+        Set of potential channel references
+    """
+    # Replace ^ with **, etc. (mirror parse_expression steps)
+    expr_str = expr_str.replace('^', '**')
+    expr_str = expr_str.replace('@', 't')
+    expr_str = expr_str.replace('?', 'rand()')
+
+    try:
+        tree = ast.parse(expr_str, mode='eval')
+    except SyntaxError:
+        return set()  # Return empty if it doesn't parse
+
+    extractor = DependencyExtractor(safe_funcs, safe_constants, known_variables)
+    extractor.visit(tree.body)
+    return extractor.references

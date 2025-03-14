@@ -8,12 +8,11 @@ It represents a complete animation or property set, like a scene in 3D software.
 import os
 import json
 import pickle
-import ast
 from collections import defaultdict
 from typing import Dict, List, Optional, Union, Any, Tuple, Set, Callable
 
 from .spline import Spline
-from .expression import ExpressionEvaluator
+from .expression import ExpressionEvaluator, extract_expression_dependencies
 from .backends import get_math_functions
 
 # KeyframeSolver file format version
@@ -32,52 +31,6 @@ try:
 except ImportError:
     yaml = None
     HAS_YAML = False
-
-
-class DependencyExtractor(ast.NodeVisitor):
-    """
-    Visits an AST and records all Name nodes that might be channel references.
-    Excludes known math functions, known constants, etc.
-    """
-    def __init__(self, safe_funcs, safe_constants, known_variables):
-        super().__init__()
-        self.safe_funcs = safe_funcs
-        self.safe_constants = safe_constants
-        self.known_variables = known_variables
-        self.references: Set[str] = set()
-
-    def visit_Name(self, node: ast.Name):
-        # If not in safe funcs/constants, record as potential dependency
-        if (
-            node.id not in self.safe_funcs
-            and node.id not in self.safe_constants
-            and node.id not in self.known_variables
-            and node.id != 't'  # or other built-in placeholders
-        ):
-            self.references.add(node.id)
-        self.generic_visit(node)
-
-
-def extract_expression_dependencies(expr_str: str,
-                                    safe_funcs,
-                                    safe_constants,
-                                    known_variables) -> Set[str]:
-    """
-    Parse the expression into an AST, then extract any names that might be channel references.
-    """
-    # Replace ^ with **, etc. (mirror your parse_expression steps)
-    expr_str = expr_str.replace('^', '**')
-    expr_str = expr_str.replace('@', 't')
-    expr_str = expr_str.replace('?', 'rand()')
-
-    try:
-        tree = ast.parse(expr_str, mode='eval')
-    except SyntaxError:
-        return set()  # Return empty if it doesn't parse
-
-    extractor = DependencyExtractor(safe_funcs, safe_constants, known_variables)
-    extractor.visit(tree.body)
-    return extractor.references
 
 
 class KeyframeSolver:

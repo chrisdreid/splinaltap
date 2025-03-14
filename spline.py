@@ -54,9 +54,10 @@ class Spline:
         Returns:
             The newly created channel
         """
-        if name in self.channels and not replace:
+        if name in self.channels:
+            if not replace:
+                raise ValueError(f"Channel '{name}' already exists in this spline")
             return self.channels[name]
-            raise ValueError(f"Channel '{name}' already exists in this spline")
         
             
         # Create a new channel with the shared variables
