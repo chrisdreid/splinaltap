@@ -321,7 +321,20 @@ class Spline:
         if theme == "dark":
             plt.style.use('dark_background')
             color_palette = ['#ff9500', '#00b9f1', '#fb02fe', '#01ff66', '#fffd01', '#ff2301']
-            grid_color = 'gray'
+            grid_color = '#444444'
+            plt.rcParams.update({
+                'text.color': '#ffffff',
+                'axes.labelcolor': '#ffffff',
+                'axes.edgecolor': '#444444',
+                'axes.facecolor': '#121212',
+                'figure.facecolor': '#121212',
+                'grid.color': '#444444',
+                'xtick.color': '#aaaaaa',
+                'ytick.color': '#aaaaaa',
+                'figure.edgecolor': '#121212',
+                'savefig.facecolor': '#121212',
+                'savefig.edgecolor': '#121212'
+            })
         else:
             plt.style.use('default')
             color_palette = ['#1f77b4', '#ff7f0e', '#2ca02c', '#d62728', '#9467bd', '#8c564b']
@@ -348,7 +361,12 @@ class Spline:
             
         # Add grid and legend
         ax.grid(True, linestyle='--', alpha=0.7, color=grid_color)
-        ax.legend()
+        
+        # Use custom legend style in dark mode
+        if theme == "dark":
+            ax.legend(facecolor='#121212', edgecolor='#444444', labelcolor='white')
+        else:
+            ax.legend()
         
         # Set x-axis to 0-1 range
         ax.set_xlim(0, 1)

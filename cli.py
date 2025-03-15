@@ -255,9 +255,11 @@ def visualize_solver(solver: KeyframeSolver, args: argparse.Namespace) -> None:
     Visualization options can be specified as key=value pairs:
         - theme=light|dark: Set the plot theme (default: light)
         - save=/path/to/file.png: Save the plot to a file
+        - overlay=true|false: If true (default), all channels are plotted in a single graph; 
+                             if false, each spline gets its own subplot
         
     Example:
-        --visualize theme=dark save=plot.png
+        --visualize theme=dark save=plot.png overlay=false
     """
     # Determine sample count
     samples = None
@@ -277,6 +279,7 @@ def visualize_solver(solver: KeyframeSolver, args: argparse.Namespace) -> None:
     save_path = None
     
     # Parse visualization options if provided
+    overlay = True  # Default to overlay (single plot)
     if hasattr(args, 'visualize') and args.visualize:
         for option in args.visualize:
             if '=' in option:
@@ -286,6 +289,11 @@ def visualize_solver(solver: KeyframeSolver, args: argparse.Namespace) -> None:
                         theme = value
                 elif key == 'save':
                     save_path = value
+                elif key == 'overlay' or key == 'combined':
+                    if value.lower() in ['false', 'no', '0', 'off']:
+                        overlay = False
+                    elif value.lower() in ['true', 'yes', '1', 'on']:
+                        overlay = True
     
     # If output_file is set, use that for backward compatibility
     if args.output_file and not save_path:
@@ -296,7 +304,8 @@ def visualize_solver(solver: KeyframeSolver, args: argparse.Namespace) -> None:
         samples=samples,
         filter_channels=None,  # Simple CLI doesn't support filtering
         theme=theme,
-        save_path=save_path
+        save_path=save_path,
+        overlay=overlay
     )
 
 
@@ -1302,7 +1311,7 @@ def main():
     
     # Commands
     parser.add_argument('--visualize', nargs='*', default=[], 
-                       help="Visualize the interpolation. Options can be specified as 'key=value', e.g., 'theme=dark' 'save=/path/to/file.png'")
+                       help="Visualize the interpolation. Options can be specified as 'key=value', e.g., 'theme=dark' 'save=/path/to/file.png' 'overlay=true|false'")
     parser.add_argument('--scene', type=str, help="Scene command (info/ls/convert/extract/generate) with args")
     parser.add_argument('--backend', type=str, help="Backend to use or backend command")
     

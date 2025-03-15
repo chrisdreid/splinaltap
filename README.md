@@ -466,8 +466,11 @@ try:
 except ImportError:
     print("Matplotlib is not installed for manual plotting")
 
-# Plot the entire solver with all splines and channels
-solver.plot(samples=100, theme="light")  # Also supports 'dark' theme
+# Plot the entire solver with all splines and channels in a single graph
+solver.plot(samples=100, theme="light", overlay=True)  # Default behavior
+
+# Plot the entire solver with each spline in its own subplot
+solver.plot(samples=100, overlay=False)
 
 # Plot with dark theme and save to file
 solver.plot(samples=100, theme="dark", save_path="dark_theme_plot.png") 
@@ -1094,6 +1097,7 @@ python splinaltap --visualize theme=dark save=dark_plot.png --keyframes "0:0@cub
 Available visualization options:
 - `theme=light|dark`: Set the plot theme (default: light)
 - `save=/path/to/file.png`: Save the plot to a file instead of or in addition to displaying it
+- `overlay=true|false`: If true (default), all channels are plotted in a single graph; if false, each spline gets its own subplot
 
 These visualization options directly utilize the Solver's built-in plotting methods, which are also available programmatically through the Python API.
 
