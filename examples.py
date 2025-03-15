@@ -2,9 +2,14 @@
 Example usage of the splinaltap library.
 """
 
-from .interpolator import KeyframeInterpolator
-from .visualization import plot_interpolation_comparison, plot_single_interpolation
+from .solver import KeyframeSolver
+from .spline import Spline
+from .channel import Channel, Keyframe
+from .expression import ExpressionEvaluator
+from .backends import BackendManager
 import matplotlib.pyplot as plt
+import time
+import os
 
 try:
     import numpy as np
@@ -22,240 +27,261 @@ except ImportError:
 
 def basic_interpolation_example():
     """Create a basic interpolation example with visualization."""
-    # Create a KeyframeInterpolator instance with 10 indices
-    interpolator = KeyframeInterpolator(10)
+    # Create a solver with a spline and channel
+    solver = KeyframeSolver(name="Basic Example")
+    spline = solver.create_spline("main")
+    channel = spline.add_channel("value", interpolation="cubic")
     
     # Add keyframes with expressions
-    interpolator.set_keyframe(0.0, 0)
-    interpolator.set_keyframe(2.5, "sin(t) + 1")  # 't' is the current time
-    interpolator.set_keyframe(5.7, "pow(t, 2)")
-    interpolator.set_keyframe(10.0, 10)
+    channel.add_keyframe(0.0, 0)
+    channel.add_keyframe(0.25, "sin(@) + 1")  # '@' is the current position
+    channel.add_keyframe(0.5, "3 + cos(@ * pi)")  # Built-in constants like pi are available
+    channel.add_keyframe(0.75, "5 * @ - 2")
+    channel.add_keyframe(1.0, 10)
     
-    # Define a variable
-    interpolator.set_variable("amplitude", 2.5)
-    interpolator.set_keyframe(7.0, "amplitude * sin(t)")
+    # Visualize the interpolation using different methods
+    values = {}
+    samples = [i/100 for i in range(101)]
     
-    # Evaluate at various points
-    t_values = [i * 0.1 for i in range(101)]
+    for method in ["linear", "cubic", "bezier", "ease_in_out"]:
+        temp_channel = Channel(interpolation=method)
+        for kf in channel.keyframes:
+            temp_channel.add_keyframe(kf.at, kf.value, control_points=kf.control_points, derivative=kf.derivative)
+        
+        values[method] = [temp_channel.get_value(pos) for pos in samples]
     
-    # Plot a single interpolation method
-    fig = plot_single_interpolation(interpolator, t_values, "cubic")
-    plt.show()
+    # Visualize using matplotlib directly
+    plt.figure(figsize=(10, 6))
+    for method, vals in values.items():
+        plt.plot(samples, vals, label=method)
     
-    # Compare different interpolation methods
-    fig = plot_interpolation_comparison(interpolator, t_values)
-    plt.show()
+    plt.title("Interpolation Methods Comparison")
+    plt.xlabel("Position")
+    plt.ylabel("Value")
+    plt.legend()
+    plt.grid(True)
+    plt.savefig("interpolation_comparison.png")
     
-    return interpolator
+    return solver
 
-def channels_example():
-    """Example showing how to use channels in expressions."""
-    interpolator = KeyframeInterpolator(10)
+def external_channels_example():
+    """Example showing how to use external channels."""
+    # Create a solver with a spline and channel
+    solver = KeyframeSolver(name="External Channels Example")
+    spline = solver.create_spline("main")
     
-    # Define keyframes that use channel values
-    interpolator.set_keyframe(0.0, 0)
-    interpolator.set_keyframe(3.0, "a * sin(t) + b")
-    interpolator.set_keyframe(7.0, "a * cos(t) + c")
-    interpolator.set_keyframe(10.0, 10)
+    # Create a channel with expressions referencing external channels
+    channel = spline.add_channel("value", interpolation="cubic")
+    channel.add_keyframe(0.0, 0)
+    channel.add_keyframe(0.3, "a * sin(@) + b")
+    channel.add_keyframe(0.7, "a * cos(@) + c")
+    channel.add_keyframe(1.0, 10)
     
-    # Evaluate with different channel values
-    t_values = [i * 0.1 for i in range(101)]
-    channels_1 = {"a": 1.0, "b": 0.5, "c": 1.0}
-    channels_2 = {"a": 2.0, "b": 0.0, "c": 3.0}
+    # Evaluate with different external channel values
+    samples = [i/100 for i in range(101)]
     
-    # Plot with different channel values
-    plt.figure(figsize=(12, 6))
+    # Two different sets of external channels
+    ext_channels_1 = {"a": 1.0, "b": 0.5, "c": 1.0}
+    ext_channels_2 = {"a": 2.0, "b": 0.0, "c": 3.0}
     
-    values_1 = [interpolator.get_value(t, "cubic", channels_1) for t in t_values]
-    plt.plot(t_values, values_1, label="Channels Set 1")
+    # Evaluate with each set
+    values_1 = [channel.get_value(pos, ext_channels_1) for pos in samples]
+    values_2 = [channel.get_value(pos, ext_channels_2) for pos in samples]
     
-    values_2 = [interpolator.get_value(t, "cubic", channels_2) for t in t_values]
-    plt.plot(t_values, values_2, label="Channels Set 2")
+    # Plot results
+    plt.figure(figsize=(10, 6))
+    plt.plot(samples, values_1, label="External Channels Set 1")
+    plt.plot(samples, values_2, label="External Channels Set 2")
     
-    # Get keyframe points for the first channel set
-    keyframe_points = interpolator._get_keyframe_points(channels_1)
-    keyframe_t = [p[0] for p in keyframe_points]
-    keyframe_values = [p[1] for p in keyframe_points]
-    
-    # Add circles at keyframe points
-    plt.scatter(keyframe_t, keyframe_values, color='black', s=100, 
+    # Plot keyframes
+    keyframe_pos = [kf.at for kf in channel.keyframes]
+    keyframe_vals = [channel.get_value(pos, ext_channels_1) for pos in keyframe_pos]
+    plt.scatter(keyframe_pos, keyframe_vals, color='black', s=100,
                 facecolors='none', edgecolors='black', label='Keyframes (Set 1)')
     
-    plt.legend()
-    plt.title("Channel Values Comparison")
-    plt.xlabel("Time")
+    plt.title("External Channels Comparison")
+    plt.xlabel("Position")
     plt.ylabel("Value")
+    plt.legend()
     plt.grid(True)
     plt.show()
     
-    return interpolator
+    return solver
 
 def bezier_control_points_example():
     """Example showing how to use Bezier control points."""
-    interpolator = KeyframeInterpolator(10)
+    # Create a solver with a spline and channel
+    solver = KeyframeSolver(name="Bezier Example")
+    spline = solver.create_spline("main")
+    channel = spline.add_channel("value", interpolation="bezier")
     
-    # Set keyframes with control points for Bezier interpolation
-    interpolator.set_keyframe(0.0, 0)
-    interpolator.set_keyframe(4.0, 5.0, derivative=None, control_points=(4.2, 6.0, 4.8, 7.0))
-    interpolator.set_keyframe(7.0, 2.0, derivative=None, control_points=(7.2, 1.0, 7.8, 0.5))
-    interpolator.set_keyframe(10.0, 10)
+    # Add keyframes with bezier control points
+    channel.add_keyframe(0.0, 0)
+    channel.add_keyframe(0.4, 5.0, {"cp": [0.42, 6.0, 0.48, 7.0]})
+    channel.add_keyframe(0.7, 2.0, {"cp": [0.72, 1.0, 0.78, 0.5]})
+    channel.add_keyframe(1.0, 10)
     
-    # Evaluate at various points
-    t_values = [i * 0.1 for i in range(101)]
+    # Evaluate and plot
+    samples = [i/100 for i in range(101)]
+    values = [channel.get_value(pos) for pos in samples]
     
-    # Plot with bezier interpolation
-    fig = plot_single_interpolation(interpolator, t_values, "bezier", 
-                                   title="Bezier Interpolation with Control Points")
-    plt.show()
+    plt.figure(figsize=(10, 6))
+    plt.plot(samples, values)
     
-    return interpolator
-
-def time_based_example():
-    """Example using time in milliseconds instead of normalized indices."""
-    # Create a time-based interpolator (no fixed indices)
-    interpolator = KeyframeInterpolator()
+    # Plot keyframes
+    keyframe_pos = [kf.at for kf in channel.keyframes]
+    keyframe_vals = [channel.get_value(kf.at) for kf in channel.keyframes]
+    plt.scatter(keyframe_pos, keyframe_vals, color='red', s=100)
     
-    # Add keyframes at specific millisecond times
-    interpolator.set_keyframe(1000.0, 0)
-    interpolator.set_keyframe(1234.567, 10)
-    interpolator.set_keyframe(2345.678, "pi * sin(t/1000)")
-    interpolator.set_keyframe(3500.0, 15)
-    
-    # Get time range
-    t_min, t_max = interpolator.get_time_range()
-    print(f"Time range: {t_min} ms to {t_max} ms")
-    
-    # Sample into an array (100 samples)
-    values = interpolator.sample_range(t_min, t_max, 100, "cubic")
-    
-    # Create time values for plotting
-    t_values = [t_min + i * (t_max - t_min) / 99 for i in range(100)]
-    
-    # Plot
-    plt.figure(figsize=(12, 6))
-    plt.plot(t_values, values)
-    plt.title("Time-Based Interpolation (milliseconds)")
-    plt.xlabel("Time (ms)")
+    plt.title("Bezier Interpolation with Control Points")
+    plt.xlabel("Position")
     plt.ylabel("Value")
     plt.grid(True)
-    
-    # Highlight keyframe points
-    keyframe_points = interpolator._get_keyframe_points()
-    keyframe_t = [p[0] for p in keyframe_points]
-    keyframe_values = [p[1] for p in keyframe_points]
-    plt.scatter(keyframe_t, keyframe_values, color='red', s=100)
-    
     plt.show()
     
-    return interpolator, values
+    return solver
 
-def scene_example():
-    """Example showing how to work with scenes that contain multiple interpolators."""
-    from .scene import Scene
-    import os
+def multidimensional_example():
+    """Example showing how to use multiple channels in a spline."""
+    # Create a solver with a position spline (x, y, z channels)
+    solver = KeyframeSolver(name="Multidimensional Example")
+    position = solver.create_spline("position")
     
-    # Create a scene
-    scene = Scene(name="AnimationScene")
-    scene.set_metadata("description", "An example animation scene")
-    scene.set_metadata("author", "Splinaltap")
+    # Add x, y, z channels
+    x_channel = position.add_channel("x", interpolation="cubic")
+    y_channel = position.add_channel("y", interpolation="cubic")
+    z_channel = position.add_channel("z", interpolation="linear")
     
-    # Create and add multiple interpolators
+    # Add keyframes to each channel
+    x_channel.add_keyframe(0.0, 0.0)
+    x_channel.add_keyframe(0.5, 10.0)
+    x_channel.add_keyframe(1.0, 0.0)
     
-    # Position X interpolator
-    position_x = KeyframeInterpolator()
-    position_x.set_keyframe(0.0, 0.0)
-    position_x.set_keyframe(1000.0, 100.0)
-    position_x.set_keyframe(2000.0, 50.0)
-    position_x.set_keyframe(3000.0, 75.0)
-    scene.add_interpolator("position_x", position_x)
+    y_channel.add_keyframe(0.0, 0.0)
+    y_channel.add_keyframe(0.3, "sin(@) * 10")
+    y_channel.add_keyframe(0.7, "cos(@) * 10")
+    y_channel.add_keyframe(1.0, 0.0)
     
-    # Position Y interpolator
-    position_y = KeyframeInterpolator()
-    position_y.set_keyframe(0.0, 0.0)
-    position_y.set_keyframe(1000.0, "sin(t/100) * 50")
-    position_y.set_keyframe(2000.0, 100.0)
-    position_y.set_keyframe(3000.0, 25.0)
-    scene.add_interpolator("position_y", position_y)
+    z_channel.add_keyframe(0.0, 0.0)
+    z_channel.add_keyframe(0.25, 5.0)
+    z_channel.add_keyframe(0.75, 5.0)
+    z_channel.add_keyframe(1.0, 0.0)
     
-    # Scale interpolator
-    scale = KeyframeInterpolator()
-    scale.set_keyframe(0.0, 1.0)
-    scale.set_keyframe(1500.0, 2.0)
-    scale.set_keyframe(3000.0, 0.5)
-    scene.add_interpolator("scale", scale)
+    # Sample all channels
+    samples = [i/100 for i in range(101)]
+    x_values = [x_channel.get_value(pos) for pos in samples]
+    y_values = [y_channel.get_value(pos) for pos in samples]
+    z_values = [z_channel.get_value(pos) for pos in samples]
     
-    # Rotation interpolator with bezier control
-    rotation = KeyframeInterpolator()
-    rotation.set_keyframe(0.0, 0.0)
-    rotation.set_keyframe(1500.0, 180.0, control_points=(500.0, 20.0, 1000.0, 160.0))
-    rotation.set_keyframe(3000.0, 360.0)
-    scene.add_interpolator("rotation", rotation)
+    # 3D plot
+    ax = plt.figure(figsize=(10, 8)).add_subplot(projection='3d')
+    ax.plot(x_values, y_values, z_values, label="3D Path")
     
-    # Save scene in different formats
+    # Plot keyframe points for clarity
+    keyframe_pos = sorted(set([kf.at for kf in x_channel.keyframes] + 
+                           [kf.at for kf in y_channel.keyframes] + 
+                           [kf.at for kf in z_channel.keyframes]))
+    
+    keyframe_x = [x_channel.get_value(pos) for pos in keyframe_pos]
+    keyframe_y = [y_channel.get_value(pos) for pos in keyframe_pos]
+    keyframe_z = [z_channel.get_value(pos) for pos in keyframe_pos]
+    
+    ax.scatter(keyframe_x, keyframe_y, keyframe_z, color='red', s=100, label="Keyframes")
+    
+    ax.set_xlabel('X')
+    ax.set_ylabel('Y')
+    ax.set_zlabel('Z')
+    ax.legend()
+    plt.title("3D Position Path")
+    plt.tight_layout()
+    plt.show()
+    
+    return solver
+
+def solver_serialization_example():
+    """Example showing how to serialize and deserialize a solver."""
+    # Create a solver with multiple splines
+    solver = KeyframeSolver(name="Animation")
+    solver.set_metadata("description", "An example animation")
+    solver.set_metadata("author", "SplinalTap")
+    
+    # Create a position spline
+    position = solver.create_spline("position")
+    position.add_channel("x").add_keyframe(0.0, 0.0).add_keyframe(1.0, 10.0)
+    position.add_channel("y").add_keyframe(0.0, 0.0).add_keyframe(1.0, 5.0)
+    position.add_channel("z").add_keyframe(0.0, 0.0).add_keyframe(1.0, 0.0)
+    
+    # Create a rotation spline
+    rotation = solver.create_spline("rotation")
+    rotation.add_channel("x").add_keyframe(0.0, 0.0).add_keyframe(1.0, 360.0)
+    rotation.add_channel("y").add_keyframe(0.0, 0.0).add_keyframe(1.0, 0.0)
+    rotation.add_channel("z").add_keyframe(0.0, 0.0).add_keyframe(1.0, 0.0)
+    
+    # Create a scale spline
+    scale = solver.create_spline("scale")
+    scale.add_channel("uniform").add_keyframe(0.0, 1.0).add_keyframe(0.5, 2.0).add_keyframe(1.0, 1.0)
+    
+    # Save in different formats
     temp_dir = "/tmp"
-    formats = [
-        ("json", "scene.json"), 
-        ("python", "scene.py"),
-        ("pickle", "scene.pkl")
-    ]
+    formats = [("json", "animation.json")]
     
-    # Add optional formats if available
-    if HAS_NUMPY:
-        formats.append(("numpy", "scene.npz"))
     if HAS_YAML:
-        formats.append(("yaml", "scene.yaml"))
+        formats.append(("yaml", "animation.yaml"))
     
     saved_files = []
     for format_name, filename in formats:
         filepath = os.path.join(temp_dir, filename)
         try:
-            scene.save(filepath, format=format_name)
+            solver.save(filepath, format=format_name)
             saved_files.append(filepath)
-            print(f"Saved scene in {format_name} format to {filepath}")
+            print(f"Saved solver in {format_name} format to {filepath}")
         except Exception as e:
             print(f"Error saving in {format_name} format: {e}")
     
     # Load back the JSON version
     if saved_files:
-        json_file = os.path.join(temp_dir, "scene.json")
-        loaded_scene = Scene.load(json_file)
-        print(f"Loaded scene: {loaded_scene.name}")
-        print(f"Metadata: {loaded_scene.metadata}")
-        print(f"Interpolator names: {loaded_scene.get_interpolator_names()}")
+        json_file = os.path.join(temp_dir, "animation.json")
+        loaded_solver = KeyframeSolver.from_file(json_file)
+        print(f"Loaded solver: {loaded_solver.name}")
+        print(f"Metadata: {loaded_solver.metadata}")
+        print(f"Spline names: {loaded_solver.get_spline_names()}")
         
-        # Sample all interpolators at a specific time
-        t = 1500.0
-        results = {}
-        for name in loaded_scene.get_interpolator_names():
-            interp = loaded_scene.get_interpolator(name)
-            results[name] = interp.get_value(t, "cubic")
-        
-        print(f"Values at t={t}ms: {results}")
+        # Sample all splines at a specific position
+        pos = 0.5
+        for spline_name in loaded_solver.get_spline_names():
+            spline = loaded_solver.get_spline(spline_name)
+            values = {name: spline.get_channel(name).get_value(pos) for name in spline.get_channel_names()}
+            print(f"{spline_name} at pos={pos}: {values}")
     
-    return scene
+    return solver
 
 def backends_example():
     """Example demonstrating different compute backends."""
-    from .backends import BackendManager, PythonBackend, NumpyBackend, CupyBackend
-    import time
+    # Create a solver with a spline and channel
+    solver = KeyframeSolver(name="Backend Example")
+    spline = solver.create_spline("main")
+    channel = spline.add_channel("value", interpolation="cubic")
     
-    # Create a large interpolation
-    interpolator = KeyframeInterpolator()
-    interpolator.set_keyframe(0.0, 0.0)
-    interpolator.set_keyframe(100.0, "sin(t/10)")
-    interpolator.set_keyframe(200.0, "sin(t/5) * cos(t/10)")
-    interpolator.set_keyframe(1000.0, 10.0)
+    # Add keyframes with complex expressions
+    channel.add_keyframe(0.0, 0.0)
+    channel.add_keyframe(0.25, "sin(@ * 10)")
+    channel.add_keyframe(0.5, "sin(@ * 5) * cos(@ * 10)")
+    channel.add_keyframe(1.0, 10.0)
     
     # Sample with different backends and measure performance
     num_samples = 100000  # Large number to compare performance
+    samples = [i/num_samples for i in range(num_samples)]
     
     backends = []
-    if PythonBackend.is_available:
-        backends.append(("python", "Pure Python"))
-    if NumpyBackend.is_available:
+    backends.append(("python", "Pure Python"))
+    if HAS_NUMPY:
         backends.append(("numpy", "NumPy (CPU)"))
-    if CupyBackend.is_available:
+    
+    try:
+        import cupy
         backends.append(("cupy", "CuPy (GPU)"))
+    except ImportError:
+        pass
     
     for backend_name, label in backends:
         # Set backend
@@ -264,7 +290,7 @@ def backends_example():
         
         # Time the sampling
         start_time = time.time()
-        result = interpolator.sample_range(0.0, 1000.0, num_samples, method="linear")
+        result = [channel.get_value(pos) for pos in samples]
         end_time = time.time()
         
         # Report performance
@@ -273,31 +299,27 @@ def backends_example():
         print(f"  {num_samples/elapsed:.0f} samples per second")
         
         # Print some sample values
-        samples = [0, 1000, 10000, 50000, 99999]
+        sample_indices = [0, 1000, 10000, 50000, 99999]
         print("  Sample values:", end=" ")
-        try:
-            for idx in samples:
-                if idx < len(result):
-                    print(f"{float(result[idx]):.2f}", end=" ")
-        except Exception as e:
-            print(f"Error accessing results: {e}")
+        for idx in sample_indices:
+            if idx < len(result):
+                print(f"{float(result[idx]):.2f}", end=" ")
         print()
     
     # Reset to best backend
     BackendManager.use_best_available()
-    return interpolator
+    return solver
 
 if __name__ == "__main__":
     # Run all examples
     basic_interpolation_example()
-    channels_example()
+    external_channels_example()
     bezier_control_points_example()
-    time_based_example()
-    scene_example()
+    multidimensional_example()
+    solver_serialization_example()
     
     # Only run backend examples if numpy is available
-    try:
-        import numpy
+    if HAS_NUMPY:
         backends_example()
-    except ImportError:
+    else:
         print("Skipping backend examples (numpy not available)")

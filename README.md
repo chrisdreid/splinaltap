@@ -2,9 +2,25 @@
 
 *Keyframe interpolation and expression evaluation that goes to eleven!*
 
+## Introduction
+
+SplinalTap is a Python library for advanced interpolation and curve generation with a focus on scientific and mathematical applications. It provides a flexible architecture for defining, manipulating, and evaluating interpolated values using various mathematical methods.
+
+Key capabilities include:
+- Multi-channel interpolation with different methods per channel
+- Safe mathematical expression evaluation within keyframes
+- Multiple interpolation algorithms (cubic, linear, bezier, hermite, etc.)
+- GPU acceleration for processing large datasets
+- Comprehensive serialization and deserialization
+- Command-line interface for quick data processing
+- Visualization tools for analyzing interpolation results
+
+Whether you're working with signal processing, function approximation, numerical analysis, or data visualization, SplinalTap provides the necessary tools to define complex interpolation behaviors with an intuitive API.
+
+
 ## About splinaltap
 
-splinaltap is a Python library that provides powerful tools for working with keyframes, expressions, and spline interpolation. It allows you to define keyframes with mathematical expressions, evaluate them at any point along a timeline, and interpolate between them using various methods.
+splinaltap is a Python library that provides powerful tools for working with keyframes, expressions, and spline interpolation. It allows you to define keyframes with mathematical expressions, evaluate them at any parametric position along a normalized range, and interpolate between them using various mathematical methods.
 
 ### Why the Name?
 
@@ -27,9 +43,194 @@ The name "splinaltap" is a playful nod to the mockumentary "This Is Spinal Tap" 
   - Bezier Interpolation
   - PCHIP (Piecewise Cubic Hermite Interpolating Polynomial)
   - Gaussian Process Interpolation (requires NumPy)
-- 🧮 **Variable Support**: Define and use variables in your expressions for complex animations and simulations
+- 🎲 **Random Value Functions**: Generate random values in expressions:
+  - `rand()`: Returns a random float between 0 and 1
+  - `randint([min, max])`: Returns a random integer between min and max (inclusive)
+  - `randint(max)`: Returns a random integer between 0 and max (inclusive)
+- 🧮 **Variable Support**: Define and use variables in your expressions for complex mathematical transformations
+- 🖥️ **Command Line Interface**: Access all features from the command line
+
+
+## Basic Usage
+
+```python
+from splinaltap import KeyframeSolver, Spline, Channel
+
+# Create a keyframe solver
+solver = KeyframeSolver(name="Interpolation")
+
+# Create a spline and channel
+spline = solver.create_spline("main")
+channel = spline.add_channel("value", interpolation="cubic")
+
+# Set keyframes with expressions
+channel.add_keyframe(at=0.0, value=0)             # Start at 0
+channel.add_keyframe(at=0.5, value="sin(t * pi) * 10")  # Use expression with t variable
+channel.add_keyframe(at=1.0, value=0)             # End at 0
+
+# Evaluate at any point
+value = channel.get_value(0.25)                  # ≈ 7.07 (using cubic interpolation)
+
+# Evaluate across splines
+result = solver.solve(0.5)                       # Get all channel values at position 0.5
+```
+
+## Advanced Usage
+
+### Cross-Channel and Cross-Spline References
+
+The publish feature allows you to use values from one channel in expressions of another channel, even across different splines. Here's an example:
+
+```python
+from splinaltap import KeyframeSolver
+
+# Create a solver
+solver = KeyframeSolver(name="CrossReference")
+
+# Create two splines
+position = solver.create_spline("position")
+rotation = solver.create_spline("rotation")
+
+# Add channels to position spline
+x = position.add_channel("x")
+y = position.add_channel("y")
+
+# Add channel to rotation spline
+angle = rotation.add_channel("angle")
+derived = rotation.add_channel("derived")
+
+# Add keyframes
+x.add_keyframe(at=0.0, value=0.0)
+x.add_keyframe(at=1.0, value=10.0)
+
+y.add_keyframe(at=0.0, value=5.0)
+y.add_keyframe(at=1.0, value=15.0)
+
+angle.add_keyframe(at=0.0, value=0.0)
+angle.add_keyframe(at=1.0, value=90.0)
+
+# Set up publishing from position.x to rotation channels
+solver.set_publish("position.x", ["rotation.derived"])
+
+# Create a derived channel that uses the published value
+# NOTE: Channel references require fully qualified names
+derived.add_keyframe(at=0.0, value="position.x * 2")  # Uses position.x
+derived.add_keyframe(at=1.0, value="position.x * 3")  # Uses position.x
+
+# Unqualified references will raise an error:
+# derived.add_keyframe(at=0.0, value="x * 2")  # ERROR: Unqualified channel reference not allowed
+
+# Evaluate at t=0.5
+result = solver.solve(0.5)
+print(f"Position x at t=0.5: {result['position']['x']}")  # 5.0
+print(f"Derived value at t=0.5: {result['rotation']['derived']}")  # 15.0
+
+# Using channel-level publishing
+scale = solver.create_spline("scale")
+factor = scale.add_channel("factor", publish=["*"])  # Publish to all channels
+factor.add_keyframe(at=0.0, value=2.0)
+factor.add_keyframe(at=1.0, value=3.0)
+
+# Create a channel that uses the globally published scale
+rescaled = position.add_channel("rescaled")
+rescaled.add_keyframe(at=0.0, value="position.x * scale.factor")  # Must use fully qualified channel name
+rescaled.add_keyframe(at=1.0, value="position.x * scale.factor")  # Must use fully qualified channel name
+
+# Evaluate again
+result = solver.solve(0.5)
+print(f"Position x: {result['position']['x']}")  # 5.0
+print(f"Position rescaled: {result['position']['rescaled']}")  # 15.0
+print(f"Scaled factor: {result['scale']['factor']}")  # 2.5
+print(f"Position value: {result['position']}")  # {'x': 5.0, 'y': 10.0, 'rescaled': 15.0}
+```
+
+### Classic Usage Example
+
+```python
+from splinaltap import KeyframeSolver
+
+# Create a keyframe solver
+solver = KeyframeSolver(name="3D Vector Field")
+
+# Set variables for use in expressions
+solver.set_variable("amplitude", 10)
+solver.set_variable("frequency", 2)
+solver.set_variable("pi", 3.14159)
+
+# Create coordinate vector spline with multiple channels
+coordinates = solver.create_spline("coordinates")
+x_channel = coordinates.add_channel("x", interpolation="linear")
+y_channel = coordinates.add_channel("y", interpolation="cubic")
+z_channel = coordinates.add_channel("z", interpolation="bezier")
+
+# Add keyframes to each channel
+x_channel.add_keyframe(at=0.0, value=0)
+x_channel.add_keyframe(at=1.0, value="10 * t")
+
+y_channel.add_keyframe(at=0.0, value=0)
+y_channel.add_keyframe(at=0.5, value="amplitude * sin(t * frequency * pi)")
+y_channel.add_keyframe(at=1.0, value=0)
+
+z_channel.add_keyframe(at=0.0, value=0, control_points=[0.1, 2, 0.3, 5])
+z_channel.add_keyframe(at=1.0, value=0, control_points=[0.7, 5, 0.9, 2])
+
+# Create phase spline
+phase = solver.create_spline("phase")
+angle = phase.add_channel("angle")
+angle.add_keyframe(at=0.0, value=0)
+angle.add_keyframe(at=1.0, value=360)
+
+# Create noise spline using random functions
+noise = solver.create_spline("noise")
+white_noise = noise.add_channel("white")
+white_noise.add_keyframe(at=0.0, value="rand() * 2 - 1")  # Random values between -1 and 1
+white_noise.add_keyframe(at=1.0, value="rand() * 2 - 1")
+
+quant_noise = noise.add_channel("quantized")
+quant_noise.add_keyframe(at=0.0, value="randint([0, 5]) * 0.2")  # Quantized to 0, 0.2, 0.4, 0.6, 0.8, 1.0
+quant_noise.add_keyframe(at=1.0, value="randint([0, 5]) * 0.2")
+
+# Save to file
+solver.save("parameter_data.json")
+
+# Load from file
+loaded = KeyframeSolver.from_file("parameter_data.json")
+# or 
+# loaded = KeyframeSolver()
+# loaded.load("parameter_data.json")
+# Evaluate at multiple positions
+for t in [0, 0.25, 0.5, 0.75, 1.0]:
+    result = loaded.solve(t)
+    print(f"At {t}: {result}")
+```
+
+## Command Line Interface
+
+```bash
+# Sample at specific points with cubic interpolation
+python splinaltap --keyframes "0:0@cubic" "0.5:10@cubic" "1:0@cubic" --samples 0.25 0.5 0.75
+
+# Create a visualization with sin wave using mathematical expressions
+python splinaltap --visualize --keyframes "0:0@cubic" "0.5:sin(t*3.14159)@cubic" "1:0@cubic" --samples 100
+
+# Use custom sample range (from 2.0 to 3.0 instead of 0-1)
+python splinaltap --keyframes "0:0" "1:10" --samples 5 --range 2,3
+
+# Sample with specific interpolation methods per channel
+python splinaltap --keyframes "0:0@linear" "1:10@linear" --samples 0.5@position:linear@rotation:hermite
+
+# Use expressions with predefined variables
+python splinaltap --keyframes "0:0@cubic" "0.5:amplitude*sin(t*pi)@cubic" "1:0@cubic" --variables "amplitude=10,pi=3.14159" --samples 100 
+
+# Using indices instead of normalized positions 
+python splinaltap --keyframes "0:0" "5:5" "10:10" --use-indices --samples 0 5 10
+
+# Save and load from files with different output formats
+python splinaltap --input-file data.json --samples 100 --output-file output.csv --content-type csv
+python splinaltap --input-file data.json --samples 100 --output-file output.json --content-type json
+```
 - 🎛️ **Channel Support**: Pass in dynamic channel values that can be used in expressions at runtime
-- 🔢 **Multi-dimensional Support** *(coming soon)*: Interpolate vectors, colors, and other multi-component values
+- 🔢 **Multi-component Support**: Interpolate vectors, scalars, and other multi-component values
 - 📊 **Visualization**: Built-in support for visualizing interpolation results
 - 🔒 **Safe Execution**: No unsafe `eval()` - all expressions are parsed and evaluated securely
 - 🚀 **GPU Acceleration**: Optional GPU support via CuPy or JAX for faster processing
@@ -61,53 +262,174 @@ pip install cupy-cuda12x
 pip install "jax[cuda]" -f https://storage.googleapis.com/jax-releases/jax_cuda_releases.html
 ```
 
-### Verifying CUDA Installation
 
-You can verify your CUDA installation is working properly with:
+<details>
+<summary> [Click to Expand] To verify that each optional dependency is installed and working correctly </summary>
+
+### Testing Optional Dependencies
+
+#### Testing NumPy Installation
 
 ```python
 import splinaltap
 from splinaltap.backends import BackendManager
 
-# Check available backends
-print(BackendManager.available_backends())  # Should include 'cupy' if installed correctly
-
-# Set backend to CuPy
-BackendManager.set_backend('cupy')
-
-# Create a sample and verify it's using GPU
-interpolator = splinaltap.KeyframeInterpolator(10)
-interpolator.set_keyframe(0.0, 0)
-interpolator.set_keyframe(10.0, 10)
-
-# Generate samples using GPU
-samples = interpolator.sample_with_gpu(0, 10, 1000)
-print(f"Backend used: {BackendManager.get_backend().name}")
-print(f"Supports GPU: {BackendManager.get_backend().supports_gpu}")
+# Check if NumPy backend is available
+backends = BackendManager.available_backends()
+if 'numpy' in backends:
+    print("NumPy is installed and available as a backend")
+    BackendManager.set_backend('numpy')
+    print(f"Backend used: {BackendManager.get_backend().name}")
+else:
+    print("NumPy is not installed or not properly configured")
 ```
+
+#### Testing YAML Support
+
+```python
+try:
+    import yaml
+    print("PyYAML is installed correctly")
+    
+    # Create a sample dictionary and dump to YAML
+    data = {"test": "value", "nested": {"key": "value"}}
+    yaml_str = yaml.dump(data)
+    print("YAML output:", yaml_str)
+    
+    # Try loading the YAML string
+    loaded = yaml.safe_load(yaml_str)
+    print("YAML loading works correctly")
+except ImportError:
+    print("PyYAML is not installed")
+except Exception as e:
+    print(f"PyYAML error: {e}")
+```
+
+#### Testing CuPy Installation (CUDA GPU Support)
+
+```python
+import splinaltap
+from splinaltap.backends import BackendManager
+
+# Check if CuPy backend is available
+backends = BackendManager.available_backends()
+if 'cupy' in backends:
+    print("CuPy is installed and available as a backend")
+    
+    try:
+        # Set backend to CuPy
+        BackendManager.set_backend('cupy')
+        
+        # Create a sample solver and verify it's using GPU
+        solver = splinaltap.KeyframeSolver()
+        spline = solver.create_spline("test")
+        channel = spline.add_channel("value")
+        channel.add_keyframe(at=0.0, value=0)
+        channel.add_keyframe(at=1.0, value=10)
+        
+        # Generate samples using GPU
+        samples = [channel.get_value(i/10) for i in range(11)]
+        print(f"Backend used: {BackendManager.get_backend().name}")
+        print(f"Supports GPU: {BackendManager.get_backend().supports_gpu}")
+        print("CuPy is working correctly")
+    except Exception as e:
+        print(f"CuPy error: {e}")
+else:
+    print("CuPy is not installed or not properly configured")
+```
+
+#### Testing JAX Installation (GPU with Autodiff Support)
+
+```python
+import splinaltap
+from splinaltap.backends import BackendManager
+
+# Check if JAX backend is available
+backends = BackendManager.available_backends()
+if 'jax' in backends:
+    print("JAX is installed and available as a backend")
+    
+    try:
+        # Set backend to JAX
+        BackendManager.set_backend('jax')
+        
+        # Create a sample solver and verify it's using JAX
+        solver = splinaltap.KeyframeSolver()
+        spline = solver.create_spline("test")
+        channel = spline.add_channel("value")
+        channel.add_keyframe(at=0.0, value=0)
+        channel.add_keyframe(at=1.0, value=10)
+        
+        # Generate samples using JAX
+        samples = [channel.get_value(i/10) for i in range(11)]
+        print(f"Backend used: {BackendManager.get_backend().name}")
+        print(f"JAX is working correctly")
+        
+        # You can also verify JAX directly
+        import jax
+        import jax.numpy as jnp
+        
+        # Check if GPU is available to JAX
+        print(f"JAX devices: {jax.devices()}")
+        
+        # Simple JAX computation
+        x = jnp.array([1.0, 2.0, 3.0])
+        y = jnp.sum(x)
+        print(f"JAX computation result: {y}")
+    except Exception as e:
+        print(f"JAX error: {e}")
+else:
+    print("JAX is not installed or not properly configured")
+```
+</details> 
+
+#### Testing All Backends with the CLI
+
+You can also verify available backends using the command line interface:
+
+```bash
+# List all available backends
+python splinaltap --backend ls
+
+# Get detailed info about the current backend
+python splinaltap --backend info
+
+# Try using a specific backend
+python splinaltap --backend numpy --keyframes "0:0" "1:10" --samples 5
+python splinaltap --backend cupy --keyframes "0:0" "1:10" --samples 5
+python splinaltap --backend jax --keyframes "0:0" "1:10" --samples 5
+```
+
+If the backends are properly installed, you should see successful output from these commands without errors related to the backend libraries.
 
 ## Quick Start
 
 ```python
-from splinaltap import KeyframeInterpolator
+from splinaltap import KeyframeSolver, Spline, Channel
 import matplotlib.pyplot as plt
 
-# Create a KeyframeInterpolator instance (normalized 0-1 range by default)
-interpolator = KeyframeInterpolator()
+# Create a solver and spline
+solver = KeyframeSolver(name="Interpolation")
+spline = solver.create_spline("main")
+channel = spline.add_channel("value", interpolation="cubic")
 
 # Add keyframes with expressions
-interpolator.set_keyframe(0.0, 0)
-interpolator.set_keyframe(0.25, "sin(t) + 1")  # 't' is the current position
-interpolator.set_keyframe(0.57, "pow(t, 2)")
-interpolator.set_keyframe(1.0, 10)
+channel.add_keyframe(at=0.0, value=0)
+channel.add_keyframe(at=0.25, value="sin(t) + 1")  # 't' is the current position
+channel.add_keyframe(at=0.57, value="pow(t, 2)")
+channel.add_keyframe(at=1.0, value=10)
 
 # Define a variable
-interpolator.set_variable("amplitude", 2.5)
-interpolator.set_keyframe(0.7, "amplitude * sin(t)")
+solver.set_variable("amplitude", 2.5)
+channel.add_keyframe(at=0.7, value="amplitude * sin(t)")
+
+# Use random functions in expressions
+channel.add_keyframe(at=0.9, value="rand() * 5")          # Random float between 0 and 5
+channel.add_keyframe(at=0.95, value="randint([1, 10])")   # Random integer between 1 and 10
 
 # Evaluate at various points
 positions = [i * 0.01 for i in range(101)]
-values = [interpolator.get_value(p, "cubic") for p in positions]
+values = [channel.get_value(p) for p in positions]
 
 # Plot the results
 plt.figure(figsize=(12, 6))
@@ -126,11 +448,11 @@ SplinalTap includes a powerful command-line interface for working with interpola
 SplinalTap follows these consistent principles across all commands:
 
 1. **Default Behavior**: Sampling/evaluation is the default behavior (no command needed)
-2. **Normalized 0-1 Range**: By default, all keyframe positions and sample points use a normalized 0-1 range for better precision
+2. **Normalized 0-1 Range**: By default, all keyframe positions and sample points use a normalized 0-1 range for better numerical precision
 3. **Keyframe Syntax**: Use `position:value@method{parameters}` format for direct keyframe definition
 4. **Consistent Parameter Names**: 
-   - Always use `--samples` for specifying sample points (never alternatives like `--points`)
-   - Always use `--methods` (plural) for interpolation methods (never singular `--method`)
+   - Use `--samples` for specifying sample points
+   - Use `--methods` for interpolation methods specification
 5. **Channel-Specific Syntax**: Use `@channel:method` syntax for per-channel interpolation
 6. **Direct Keyframe Specification**: Define keyframes directly with `--keyframes` without requiring JSON files
 
@@ -140,7 +462,7 @@ SplinalTap can be used in two ways, both of which keep all code contained within
 
 ```bash
 # Run from any directory by providing the path (development mode):
-python /path/to/splinaltap --help
+python /path/to/python splinaltap --help
 
 # If installed with pip (production mode):
 python splinaltap --help
@@ -182,6 +504,7 @@ python splinaltap --backend ls              # List all backends
 python splinaltap --backend info            # Show detailed info
 python splinaltap --backend numpy           # Set backend to numpy
 python splinaltap --backend best            # Use best available backend
+python splinaltap --backend cupy --input-file input.json --samples 100  # Run with cupy backend
 
 # Define and use keyframes directly on command line (0-1 normalized range)
 python splinaltap --keyframes 0:0@cubic 0.5:10@cubic 1:0@cubic --samples 100 --output-file from_cli.csv
@@ -201,105 +524,433 @@ python splinaltap --generate-scene template.yaml --content-type yaml
 # Work with existing files to create new scenes
 python splinaltap --input-file existing.json --generate-scene modified.json
 python splinaltap --input-file existing.json --generate-scene with_new_keyframes.json --keyframes 0:0 0.5:5 1:0
-
-# Work with scenes (multiple interpolators)
-python splinaltap --scene "info path/to/scene.json"
-python splinaltap --scene "ls path/to/scene.json"
-python splinaltap --scene "convert input.json output.yaml"
-python splinaltap --scene "extract input.json output.json position"         # Extract full position interpolator
-python splinaltap --scene "extract input.json position_x.json position.x"   # Extract just the x dimension
-
-# Manage compute backends
-python splinaltap --backend                  # Show current backend
-python splinaltap --backend ls               # List available backends
-python splinaltap --backend info             # Show detailed backend info
-python splinaltap --backend numpy            # Switch to NumPy backend
-python splinaltap --backend best             # Use best available backend
 ```
 
 ### Input File Format
 
 SplinalTap supports two main JSON file formats: single-dimension interpolators and multi-dimension interpolators.
 
-#### Single-Dimension Interpolator
-
-The simplest format represents a single interpolator:
+#### Simple Example Single Dimension Solver (solver-basic.json)
 
 ```json
 {
-  "version": "1.0",
+  "version": "2.0",
+  "name": "MySolver",
   "range": [0.0, 1.0],
+  "metadata": {
+    "description": "Simple animation curve",
+    "author": "SplinalTap"
+  },
   "variables": {
     "amplitude": 2.5,
-    "frequency": 0.5
+    "frequency": 0.5,
+    "pi": 3.14159
   },
-  "keyframes": [
-    {
-      "index": 0.0,
-      "value": 0
-    },
-    {
-      "index": 0.5,
-      "value": "sin(t * frequency) * amplitude",
-      "derivative": 0.5,
-      "control_points": [0.6, 12, 0.7, 8]
-    },
-    {
-      "index": 1.0,
-      "value": 10
-    }
-  ]
-}
-```
-
-#### Multi-Dimension Interpolator
-
-Multi-dimensional data (like positions, colors, etc.) can be organized in a single JSON file with dimensions as properties:
-
-```json
-{
-  "version": "1.0",
-  "range": [0.0, 1.0],
-  "variables": {
-    "amplitude": 2.5,
-    "frequency": 0.5
-  },
-  "dimensions": {
-    "x": {
-      "range": [0.0, 1.0],
-      "keyframes": [
-        { "index": 0.0, "value": 0 },
-        { "index": 0.5, "value": "sin(t * frequency) * amplitude" },
-        { "index": 1.0, "value": 10 }
-      ]
-    },
-    "y": {
-      "keyframes": [
-        { "index": 0.0, "value": 5 },
-        { "index": 0.5, "value": 15 },
-        { "index": 1.0, "value": 5 }
-      ],
-      "variables": {
-        "amplitude": 5.0
+  "splines": {
+    "position": {
+      "x": {
+        "interpolation_method": "cubic",
+        "min-max": [0, 10],
+        "keyframes": [
+          {
+            "@": 0.0,
+            "value": 0
+          },
+          {
+            "@": 0.5,
+            "value": "sin(t*frequency)*amplitude",
+            "interpolation_method": "hermite",
+            "parameters": {
+              "deriv": 0.5
+            }
+          },
+          {
+            "@": 0.75,
+            "value": 5,
+            "interpolation_method": "bezier",
+            "parameters": {
+              "cp": [0.6, 12, 0.7, 8]
+            }
+          },
+          {
+            "@": 1.0,
+            "value": 10
+          }
+        ]
       }
-    },
-    "z": {
-      "keyframes": [
-        { "index": 0.0, "value": 0 },
-        { "index": 1.0, "value": 0 }
-      ]
     }
   }
 }
 ```
 
-This structure allows you to:
-- Define global range and variables that apply to all dimensions
-- Override range or variables at the dimension level if needed
-- Keep all dimensions in a single file with clear organization
-- Have different keyframes for each dimension while sharing the same normalized position space
+#### Advanced Example Solver (solver-advanced.json)
 
-Both formats allow for complete control over the interpolator configuration, including variables for expressions, derivatives for Hermite interpolation, and control points for Bezier curves.
+```json
+{
+  "version": "2.0",
+  "name": "MySolver",
+  "range": [0.0, 1.0],
+  "metadata": {
+    "description": "Simple animation curve",
+    "author": "user@splinaltap.com"
+  },
+  "variables": {
+    "amplitude": 2.5,
+    "frequency": 0.5,
+    "pi": 3.14159
+  },
+  "publish": {
+    "position.x": ["rotation.y"],
+    "rotation.z": ["position"]
+  },
+  "splines": {
+    "position": {
+      "x": {
+        "interpolation_method": "cubic",
+        "min-max": [0, 10],
+        "keyframes": [
+          { "@": 0.0, "value": 0 },
+          { "@": 0.5, "value": "sin(t*frequency)*amplitude", "interpolation_method": "hermite", "parameters": { "deriv": 0.5 } },
+          { "@": 0.75, "value": 5, "interpolation_method": "bezier", "parameters": { "cp": [0.6, 12, 0.7, 8] } },
+          { "@": 1.0, "value": 10 }
+        ]
+      }
+    },
+    "rotation": {
+      "x": {
+        "interpolation_method": "linear",
+        "min-max": [0, 10],
+        "keyframes": [
+          { "@": 0.0, "value": 0 },
+          { "@": 1.0, "value": 10 }
+        ]
+      },
+      "y": {
+        "interpolation_method": "linear",
+        "min-max": [0, 10],
+        "keyframes": [
+          { "@": 0.0, "value": 0 },
+          { "@": 1.0, "value": 10 }
+        ]
+      },
+      "z": {
+        "publish": ["*"],
+        "interpolation_method": "linear",
+        "min-max": [0, 10],
+        "keyframes": [
+          { "@": 0.0, "value": 0 },
+          { "@": 1.0, "value": 10 }
+        ]
+      }
+    }
+  }
+}
+```
+
+### Working with Solver Files
+
+A Solver is a collection of multiple named splines, which can be useful for complex datasets with multiple parameters. Here's an example of a Solver file structure:
+
+```json
+{
+  "version": "2.0",
+  "name": "MySolver",
+  "metadata": {
+    "description": "A complex parameter set with multiple components",
+    "author": "SplinalTap User",
+    "created": "2023-09-15"
+  },
+  "range": [0.0, 1.0],
+  "variables": {
+    "pi": 3.14159,
+    "amplitude": 10
+  },
+  "splines": {
+    "position": {
+      "x": {
+        "min-max": [0, 10],
+        "interpolation_method": "cubic",
+        "keyframes": [
+          {"@": 0.0, "value": 0},
+          {"@": 0.5, "value": 10},
+          {"@": 1.0, "value": 0}
+        ]
+      },
+      "y": {
+        "interpolation_method": "cubic",
+        "keyframes": [
+          {"@": 0.0, "value": 0},
+          {"@": 0.5, "value": "sin(t*pi)"},
+          {"@": 1.0, "value": 0}
+        ]
+      },
+      "z": {
+        "interpolation_method": "cubic",
+        "keyframes": [
+          {"@": 0.0, "value": 0},
+          {"@": 1.0, "value": 5}
+        ]
+      }
+    },
+    "rotation": {
+      "interpolation_method": "linear",
+      "keyframes": [
+        {"@": 0.0, "value": 0},
+        {"@": 1.0, "value": 360}
+      ]
+    },
+    "scale": {
+      "x": {
+        "min-max": [0, 10],
+        "clip": [1, 9],
+        "interpolation_method": "cubic",
+        "keyframes": [
+          {"@": 0.0, "value": 1},
+          {"@": 0.5, "value": "amplitude * 0.1"},
+          {"@": 1.0, "value": 1}
+        ]
+      },
+      "y": {
+        "min-max": [1, 1],
+        "interpolation_method": "cubic",
+        "keyframes": [
+          {"@": 0.0, "value": 1},
+          {"@": 1.0, "value": 1}
+        ]
+      }
+    }
+  }
+}
+```
+
+### Animation Spline Format Instructions
+
+This document describes the JSON format for defining animation splines, including how to publish channel values for use in expressions across splines.
+
+#### Structure Overview
+
+- **version**: String - The format version (required to be "2.0").
+- **name**: String - Name of the solver or animation (e.g., "MySolver").
+- **range**: Array[Float, Float] - Global time/position range for all splines (e.g., [0.0, 1.0]).
+- **metadata**: Object - Optional info like "description" (string) and "author" (string, e.g., "user@splinaltap.com").
+- **variables**: Object - Named constants (e.g., "amplitude": 2.5) usable in expressions.
+- **publish**: Object - (Optional) Top-level subscription rules (see Publishing Values).
+- **splines**: Object - Contains spline definitions, each with channels.
+
+#### Splines and Channels
+
+- **Spline**: An object under "splines" (e.g., "position", "rotation") containing channel definitions.
+- **Channel**: An object under a spline (e.g., "x", "y", "z") with:
+  - **interpolation_method**: String - Default interpolation type ("cubic", "linear", "hermite", "bezier").
+  - **min-max**: Array[Float, Float] - Optional value range (e.g., [0, 10]).
+  - **publish**: Array[String] - (Optional) Channel-level publication targets (see Publishing Values).
+  - **keyframes**: Array[Object] - List of keyframes defining the curve:
+    - **@**: Float - Time/position in the range (e.g., 0.5).
+    - **value**: Float or String - Value at this point (e.g., 5) or an expression (e.g., "sin(t*frequency)*amplitude").
+    - **interpolation_method**: String - (Optional) Overrides the channel's interpolation for this segment.
+    - **parameters**: Object - (Optional) Interpolation-specific settings (e.g., "deriv": 0.5 for Hermite, "cp": [x1, y1, x2, y2] for Bezier).
+
+#### Publishing Values
+
+Channels can share their values with others via the "publish" directive, allowing expressions to reference them (e.g., "position.x + 2").
+
+##### Top-level "publish"
+Format: {"source.channel": ["target.channel1", "target.spline"]}
+
+Purpose: Specifies which channels or splines can read the source channel's value.
+
+Examples:
+- "position.x": ["rotation.y"] - "rotation.y" can use "position.x".
+- "rotation.z": ["position"] - All channels under "position" (e.g., "position.x") can use "rotation.z".
+
+##### Channel-level "publish"
+Format: "publish": ["target.channel1", "target.channel2", "*"] within a channel.
+
+Purpose: Specifies which channels this channel sends its value to.
+
+Examples:
+- "publish": ["position.x"] - This channel's value is sent to "position.x".
+- "publish": ["*"] - All channels in the system can access this channel's value.
+
+##### Rules:
+A channel's value is accessible if either:
+- It's listed as a target in its own "publish", or
+- It's listed as a subscriber in the top-level "publish".
+
+"*" in a channel-level "publish" overrides other rules, making the channel globally accessible.
+
+Without any "publish", a channel's value is private (closed by default).
+
+#### Expressions
+
+Syntax: Strings in "value" (e.g., "sin(t*frequency)*amplitude") can use:
+- Variables from "variables" (e.g., "amplitude", "pi").
+- Published channels using **fully qualified names** (e.g., "position.x") if access is granted via "publish".
+- "t": The current time/position (matches "@").
+
+Example: "rotation.z * 2 + sin(t*pi)" combines a published channel and a variable.
+
+> **IMPORTANT**: Channel references in expressions **must** use fully qualified names in the format `spline.channel`. 
+> Unqualified references like just `x` are not allowed and will cause a ValueError to be raised.
+> This requirement ensures clarity and prevents ambiguity when multiple channels have the same name.
+> 
+> Allowed:
+> ```python
+> value="position.x * 2"  # Explicitly uses position.x
+> value="rotation.angle + scale.factor"  # Multiple fully qualified references
+> ```
+> 
+> Not allowed:
+> ```python
+> value="x * 2"  # ERROR: Unqualified reference to 'x'
+> value="angle + factor"  # ERROR: Unqualified references
+> ```
+> 
+> The only exceptions to this rule are:
+> - The built-in time variable `t`
+> - Constants defined with `solver.set_variable()`
+> - Mathematical constants and functions
+
+#### Example
+
+```json
+{
+  "publish": {
+    "position.x": ["rotation.y"],
+    "rotation.z": ["position"]
+  },
+  "splines": {
+    "position": {
+      "x": { "keyframes": [{ "@": 1.0, "value": "rotation.z" }] }
+    },
+    "rotation": {
+      "y": { "keyframes": [{ "@": 1.0, "value": "position.x * 2" }] },
+      "z": { "publish": ["*"], "keyframes": [{ "@": 1.0, "value": 10 }] }
+    }
+  }
+}
+```
+
+- "rotation.y" uses "position.x" (allowed by top-level "publish").
+- "position.x" uses "rotation.z" (allowed by both top-level and "*").
+- "rotation.z" is accessible everywhere due to "*".
+
+#### Notes
+
+- Wildcard "*": Makes "rotation.z" a global variable essentially—any channel can use it, overriding the top-level "rotation.z": ["position"].
+- Consistency: We use "t" in expressions since it pairs with "@".
+
+#### Unit Tested Example
+
+Below is a complete example of a solver file with publish rules that has been tested and verified in unit tests:
+
+```json
+{
+  "version": "2.0",
+  "name": "TestScene",
+  "metadata": {
+    "author": "SplinalTap Tests",
+    "description": "Test JSON file for unit tests"
+  },
+  "variables": {
+    "pi": 3.14159,
+    "amplitude": 10
+  },
+  "range": [0, 1],
+  "publish": {
+    "position.x": ["*"],
+    "position.y": ["expressions.sine"]
+  },
+  "splines": [
+    {
+      "name": "position",
+      "channels": [
+        {
+          "name": "x",
+          "interpolation": "linear",
+          "min_max": [0, 100],
+          "keyframes": [
+            { "@": 0.0, "value": 0.0 },
+            { "@": 0.5, "value": 50.0 },
+            { "@": 1.0, "value": 100.0 }
+          ]
+        },
+        {
+          "name": "y",
+          "interpolation": "cubic",
+          "publish": ["expressions.*"],
+          "keyframes": [
+            { "@": 0.0, "value": 0.0 },
+            { "@": 0.25, "value": 25.0 },
+            { "@": 0.5, "value": 50.0 },
+            { "@": 0.75, "value": 75.0 },
+            { "@": 1.0, "value": 0.0 }
+          ]
+        },
+        {
+          "name": "z",
+          "interpolation": "step",
+          "keyframes": [
+            { "@": 0.0, "value": 0.0 },
+            { "@": 0.5, "value": 50.0 },
+            { "@": 1.0, "value": 0.0 }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "rotation",
+      "channels": [
+        {
+          "name": "angle",
+          "interpolation": "cubic",
+          "min_max": [0, 360],
+          "keyframes": [
+            { "@": 0.0, "value": 0.0 },
+            { "@": 1.0, "value": 360.0 }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "expressions",
+      "channels": [
+        {
+          "name": "sine",
+          "interpolation": "linear",
+          "keyframes": [
+            { "@": 0.0, "value": "sin(0)" },
+            { "@": 0.5, "value": "sin(pi/2)" },
+            { "@": 1.0, "value": "sin(pi)" }
+          ]
+        },
+        {
+          "name": "random",
+          "interpolation": "linear",
+          "keyframes": [
+            { "@": 0.0, "value": "rand() * amplitude" },
+            { "@": 1.0, "value": "randint(5)" }
+          ]
+        },
+        {
+          "name": "dependent",
+          "interpolation": "linear",
+          "keyframes": [
+            { "@": 0.0, "value": "x + y" },
+            { "@": 1.0, "value": "x * 2" }
+          ]
+        }
+      ]
+    }
+  ]
+}
+```
+
+In this example:
+- position.x is published to all channels with "*"
+- position.y is published only to expressions.sine
+- position.y also publishes to all expressions.* channels via its channel-level publish property
+- The "dependent" channel can access x and y values from position because of the publish rules
 
 ### Using Keyframes Directly on the Command Line
 
@@ -335,212 +986,119 @@ The keyframe syntax is: `position:value@method{parameters}` where:
   - For hermite: `{deriv=value}` - specifies the derivative at this point
   - For bezier: `{cp=x1,y1,x2,y2}` - specifies the control points
 
-If you omit the method or parameters, reasonable defaults will be used. For example:
-- `0.5:10` - uses the default method (cubic) with default parameters
-- `0.5:10@hermite` - uses hermite method with default derivative (0)
-
-#### Normalized vs. Index Positions
-
-All keyframe positions are normalized to a 0-1 range by default. This provides several benefits:
-- Better floating-point precision for animations
-- Consistent representation regardless of time scale
-- Easier to transfer animations between contexts
-- Reduced rounding errors during interpolation
-
-If you need to use absolute indices instead of normalized positions, use the `--use-indices` flag:
-
-```bash
-# Use absolute indices rather than normalized 0-1 positions
-python splinaltap --keyframes 0:0@cubic 5:10@cubic 10:0@cubic --use-indices --samples 100
-```
-
-#### Default Behavior and Commands
-
-Sampling/evaluation is the default behavior when no specific command is provided:
-
-```bash
-# These all sample/evaluate interpolated values (default behavior)
-python splinaltap --keyframes 0:0@cubic 0.5:10@cubic 1:0@cubic --samples 0.25 0.5 0.75
-python splinaltap --input-file input.json --samples 100
-python splinaltap --keyframes 0:0@cubic 0.5:10@bezier{cp=0.6,12,0.7,8} 1:0@cubic --samples 1000 --range 0,1
-```
-
-Specialized operations require explicit commands:
-- `--visualize`: For generating plots and visualizations
-- `--scene`: Unified command for scene operations with subcommands like `info`, `ls`, `convert`, `extract`
-- `--backend`: Unified command for managing compute backends (no args shows current, `ls` lists all, etc.)
-- `--generate-scene`: For creating scene files at a specified filepath
-
-### Advanced Sample Syntax
-
-SplinalTap supports advanced syntax for sample points with channel-specific methods using the `@` notation:
-
-```bash
-# Sample with specific channels and methods (sample points in 0-1 normalized range)
-python splinaltap --sample --input-file input.json --samples 0.5@channel-a:linear@channel-b:cubic:hermite
-
-# Sample count with multiple methods for a channel
-python splinaltap --sample --keyframes 0:0 0.5:10 1:0 --samples 100 @default:linear:cubic:hermite
-
-# Combine sample points with different methods
-python splinaltap --sample --keyframes 0:0 0.5:10 1:0 --samples 0.25@x:linear 0.5@x:cubic 0.75@x:hermite
-
-# Mix sample count and channels
-python splinaltap --sample --input-file input.json --samples 1000 @position:linear @rotation:hermite
-```
-
-The general syntax format is: `VALUE[@CHANNEL:METHOD1:METHOD2...][@CHANNEL:METHOD...]`
-
-Just like keyframe positions, all sample points are normalized to the 0-1 range by default for consistency. When using `--use-indices`, both keyframes and sample points will use absolute index values instead.
-
-#### Relationship Between Samples and Keyframes
-
-The sample parameter (`--samples`) serves two distinct purposes:
-1. When given an integer, it generates that many evenly distributed samples across the 0-1 range
-2. When given decimal values (like 0.25, 0.5, 0.75), it samples at those specific normalized positions
-
-This flexibility allows both exact point evaluation and dense sampling from a single parameter, maintaining CLI consistency.
-
-### Available Interpolation Methods
-
-SplinalTap supports multiple interpolation methods that can be specified with the `--methods` parameter:
-
-| Method | Description | Required Keyframe Data | Best Use Case |
-|--------|-------------|------------------------|---------------|
-| `nearest` | Nearest neighbor interpolation | Value only | Step functions, discrete states |
-| `linear` | Linear interpolation between points | Value only | Simple transitions, straight lines |
-| `quadratic` | Quadratic spline interpolation | Value only | Smooth curves with C¹ continuity |
-| `cubic` | Cubic spline interpolation | Value only | Smooth curves with C² continuity (default) |
-| `hermite` | Hermite interpolation | Value + derivative | When you need control over tangents |
-| `bezier` | Bezier curve interpolation | Value + control points | When you need precise curve shape control |
-| `lagrange` | Lagrange polynomial interpolation | Value only | When curve must pass exactly through all points |
-| `pchip` | Piecewise Cubic Hermite Interpolating Polynomial | Value only | When you need monotonicity preservation |
-| `gaussian` | Gaussian process interpolation | Value only | Statistical interpolation with uncertainty |
-
-All methods can be used with either normalized or index mode. Each method has different characteristics that make it suitable for different applications:
-- `cubic` is a good default choice for smooth animations
-- `hermite` gives more control by specifying derivatives at keyframes
-- `bezier` provides the most control with additional control points
-- `nearest` and `linear` are computationally efficient for large datasets
-
-### Variables vs. Channels
-
-SplinalTap has two distinct concepts for parameterizing expressions:
-
-1. **Variables**: Constants defined at creation time, used in expressions for all evaluations
-   - Set with `--variables` parameter in CLI or in the input file
-   - Examples: `amplitude=2.5`, `frequency=0.5`, `phase=1.2`
-   - Cannot be changed after creation without recreating the interpolator
-
-2. **Channels**: Dynamic values passed at evaluation time, changing the result on-the-fly
-   - Specified with `--channels` parameter or using the `@channel` syntax
-   - Examples: `@position:linear`, `@x:cubic`, `@rotation:hermite`
-   - Can be different for each evaluation/sample without recreating anything
-   - Useful for dynamic parameters that change over time
-
-Variables are baked into the interpolator at creation, while channels are external inputs that can change with each evaluation.
-
-### Working with Scene Files
-
-A Scene is a collection of multiple named interpolators, which can be useful for complex animations with multiple properties. Scene files extend the multi-dimension concept to allow completely independent interpolators:
-
-```json
-{
-  "version": "1.0",
-  "name": "MyAnimation",
-  "metadata": {
-    "description": "A complex animation with multiple properties",
-    "author": "SplinalTap User",
-    "created": "2023-09-15"
-  },
-  "variables": {
-    "pi": 3.14159,
-    "amplitude": 10
-  },
-  "interpolators": {
-    "position": {
-      "range": [0.0, 1.0],
-      "dimensions": {
-        "x": {
-          "keyframes": [
-            {"index": 0.0, "value": 0},
-            {"index": 0.5, "value": 10},
-            {"index": 1.0, "value": 0}
-          ]
-        },
-        "y": {
-          "keyframes": [
-            {"index": 0.0, "value": 0},
-            {"index": 0.5, "value": "sin(t*pi)"},
-            {"index": 1.0, "value": 0}
-          ]
-        },
-        "z": {
-          "keyframes": [
-            {"index": 0.0, "value": 0},
-            {"index": 1.0, "value": 5}
-          ]
-        }
-      }
-    },
-    "rotation": {
-      "range": [0.0, 1.0],
-      "keyframes": [
-        {"index": 0.0, "value": 0},
-        {"index": 1.0, "value": 360}
-      ]
-    },
-    "scale": {
-      "dimensions": {
-        "x": {
-          "keyframes": [
-            {"index": 0.0, "value": 1},
-            {"index": 0.5, "value": "amplitude * 0.1"},
-            {"index": 1.0, "value": 1}
-          ]
-        },
-        "y": {
-          "keyframes": [
-            {"index": 0.0, "value": 1},
-            {"index": 1.0, "value": 1}
-          ]
-        }
-      }
-    }
-  }
-}
-```
-
-Scene files can be:
-- Inspected with `--scene-info`
-- Converted to other formats with `--scene-convert`
-- Individual interpolators can be extracted with `--scene-extract`
-
-**Note**: While the CLI supports basic operations with scene files and single-dimension interpolators, complex multi-dimensional configurations are best created and managed through JSON files directly. This design choice keeps the command-line interface focused and intuitive while still providing full power through file-based workflows.
-
 ### Output Format
 
-When using SplinalTap to evaluate or sample keyframes, the output follows a simple, consistent format:
+When using SplinalTap to evaluate or sample keyframes, the output follows a hierarchical structure that matches the organization of splines and channels:
 
 ```json
 {
-  "version": "1.0",
-  "samples": [0.0, 0.25, 0.5, 0.75, 1.0],
+  "version": "2.0",
+  "name": "CommandLine",
+  "metadata": {},
+  "samples": [0.25, 0.5, 0.75],
   "results": {
-    "chan-x": [0.0, 2.5, 5.0, 7.5, 10.0],
-    "position": [0.0, 2.5, 5.0, 7.5, 10.0]
+    "default": {
+      "value": [6.25, 10.0, 6.25]
+    },
+    "position": {
+      "x": [2.5, 5.0, 7.5],
+      "y": [10.0, 15.0, 10.0],
+      "z": [2.5, 5.0, 2.5]
+    }
   }
 }
 ```
 
 The output consists of:
 - `version`: The format version for compatibility tracking
+- `name`: The name of the solver
+- `metadata`: Any metadata associated with the solver
 - `samples`: Array of sample point positions
-- `results`: Object containing channels, each with an array of values that directly correspond to the samples
+- `results`: Hierarchical object organized by splines and channels
+  - Each spline is a top-level key in the results object
+  - Each channel is a key within its parent spline
+  - Channel values are stored as arrays that correspond directly to the samples array
 
-Each channel's values are stored as a simple array, with positions corresponding to the same index in the samples array. This makes the output easy to parse and use in any application.
+This structure makes it easy to navigate and process the data programmatically. For example, to access the 'x' channel value at the second sample position:
+
+```python
+value = data["results"]["position"]["x"][1]  # 5.0
+```
+
+The hierarchical organization also makes the output more readable and maintains the logical structure of the data.
 
 For more details on each command, run `splinaltap <command> --help`.
+
+## API Usage Examples
+
+```python
+# Using the KeyframeSolver API
+from splinaltap import KeyframeSolver, Spline, Channel
+
+# Create a solver with metadata
+solver = KeyframeSolver(name="Example")
+solver.set_metadata("description", "Animation curves for a 2D path")
+solver.set_metadata("author", "SplinalTap")
+
+# Create splines and channels with different interpolation methods
+position = solver.create_spline("position")
+x_channel = position.add_channel("x", interpolation="cubic")
+y_channel = position.add_channel("y", interpolation="hermite")
+z_channel = position.add_channel("z", interpolation="bezier")
+
+# Add built-in values and variables for use in expressions
+solver.set_variable("pi", 3.14159)
+solver.set_variable("amplitude", 10)
+solver.set_variable("frequency", 2)
+
+# Add keyframes with different methods and parameters
+# For x channel (cubic - default method)
+x_channel.add_keyframe(at=0.0, value=0)
+x_channel.add_keyframe(at=0.5, value="amplitude * sin(t*frequency*pi)")
+x_channel.add_keyframe(at=1.0, value=0)
+
+# For y channel (hermite - with derivatives)
+y_channel.add_keyframe(at=0.0, value=0, derivative=0)
+y_channel.add_keyframe(at=0.5, value=10, derivative=0)
+y_channel.add_keyframe(at=1.0, value=0, derivative=-5)
+
+# For z channel (bezier - with control points)
+z_channel.add_keyframe(at=0.0, value=0, control_points=[0.1, 2, 0.2, 5])
+z_channel.add_keyframe(at=0.5, value=5, control_points=[0.6, 8, 0.7, 2])
+z_channel.add_keyframe(at=1.0, value=0)
+
+# Set min/max clamping for a channel
+x_channel.min_max = (0, 10)  # Clamp x values between 0 and 10
+
+# Evaluate at specific positions
+position_025 = solver.solve(0.25)
+position_050 = solver.solve(0.50)
+position_075 = solver.solve(0.75)
+
+print(f"Position at 0.25: {position_025}")
+print(f"Position at 0.50: {position_050}")
+print(f"Position at 0.75: {position_075}")
+
+# Evaluate multiple positions at once
+positions = [0.0, 0.25, 0.5, 0.75, 1.0]
+results = solver.solve_multiple(positions)
+print(f"Multiple results: {results}")
+
+# Save to file in different formats
+solver.save("example.json", format="json")
+solver.save("example.yaml", format="yaml")
+solver.save("example.pkl", format="pickle")
+
+# Load from file
+loaded_solver = KeyframeSolver.from_file("example.json")
+print(f"Loaded: {loaded_solver.name}")
+print(f"Metadata: {loaded_solver.metadata}")
+print(f"Splines: {list(loaded_solver.splines.keys())}")
+
+# Create a copy of the solver
+copied_solver = solver.copy()
+print(f"Copied solver has {len(copied_solver.splines)} splines")
+```
 
 ## Advanced Usage
 
@@ -548,12 +1106,32 @@ For more details on each command, run `splinaltap <command> --help`.
 
 ```python
 # Compare different interpolation methods
+from splinaltap import KeyframeSolver, Spline, Channel
+import matplotlib.pyplot as plt
+
+# Create a solver with a single channel
+solver = KeyframeSolver()
+spline = solver.create_spline("test")
+channel = spline.add_channel("value")
+
+# Add some keyframes
+channel.add_keyframe(at=0.0, value=0)
+channel.add_keyframe(at=0.5, value=10)
+channel.add_keyframe(at=1.0, value=0)
+
+# Compare different interpolation methods
 methods = ["linear", "cubic", "hermite", "bezier"]
 plt.figure(figsize=(12, 8))
 
 positions = [i * 0.01 for i in range(101)]  # Normalized 0-1 range
 for method in methods:
-    values = [interpolator.get_value(p, method) for p in positions]
+    # Create a channel for each method
+    method_channel = spline.add_channel(f"value_{method}", interpolation=method)
+    method_channel.add_keyframe(at=0.0, value=0)
+    method_channel.add_keyframe(at=0.5, value=10)
+    method_channel.add_keyframe(at=1.0, value=0)
+    
+    values = [method_channel.get_value(p) for p in positions]
     plt.plot(positions, values, label=method.capitalize())
 
 plt.legend()
@@ -561,240 +1139,161 @@ plt.title("Interpolation Methods Comparison")
 plt.show()
 ```
 
-### Understanding Interpolators, Dimensions, and Channels
+### Understanding Solvers, Splines, and Channels
 
 SplinalTap works with three core concepts that provide different levels of organization and flexibility:
 
-#### 1. Interpolators: Independent Animation Curves or Properties
+#### 1. Splines: Independent Interpolation Functions
 
-Interpolators are top-level entities that represent a complete animation curve or property. In a scene file, 
-these are named entities (like "position", "rotation", "scale") that can be manipulated independently.
+Splines are named component groups that represent a complete interpolation entity. In a solver file, 
+these are named entities (like "coordinates", "phase", "magnitude") that can be manipulated independently.
 
 ```python
-# A scene can contain multiple independent interpolators
-scene = {
-    "interpolators": {
-        "position": { /* position interpolator data */ },
-        "rotation": { /* rotation interpolator data */ },
-        "scale": { /* scale interpolator data */ }
+# A solver can contain multiple independent splines
+solver = {
+    "splines": {
+        "coordinates": { /* coordinates spline data with channels */ },
+        "phase": { /* phase spline data with channels */ },
+        "magnitude": { /* magnitude spline data with channels */ }
     }
 }
 
-# Each interpolator can be extracted and used independently
-position_interpolator = scene.get_interpolator("position")
-rotation_interpolator = scene.get_interpolator("rotation")
+# Each spline can be extracted and used independently
+coordinates_spline = solver.get_spline("coordinates")
+phase_spline = solver.get_spline("phase")
 ```
 
-When using the `--scene extract` command, you're extracting a named interpolator from a scene file:
+When using the `--scene extract` command, you're extracting a named spline from a solver file:
 ```bash
-# Extract the "position" interpolator including all its dimensions
-python splinaltap --scene "extract scene.json position.json position"
+# Extract the "coordinates" spline including all its channels
+python splinaltap --scene "extract scene.json coordinates.json coordinates"
 ```
 
-#### 2. Dimensions: Components of an Interpolated Value
+### Topological Solver
 
-Dimensions represent individual components of an interpolator (like x, y, z coordinates for position). 
-Each dimension has its own set of keyframes but shares the same normalized timeline range.
+SplinalTap includes a powerful topological solver that optimizes the evaluation of channel expressions that reference other channels. It works by:
+
+1. Analyzing dependencies between channels (using fully qualified names)
+2. Building a dependency graph
+3. Sorting channels in topological order (dependency-first order)
+4. Using caching to avoid redundant calculations
+5. Handling advanced cases like time offsets in expressions
+
+The topological solver (default) offers several advantages over the on-demand solver:
+
+- **Efficiency**: Evaluates each channel exactly once per time point
+- **Optimal Ordering**: Ensures dependencies are calculated before dependent channels
+- **Cache Optimization**: Avoids redundant calculations for repeated references
+- **Cycle Detection**: Identifies and reports dependency cycles
+- **Clear Dependencies**: Requires fully qualified names for all channel references, making dependencies explicit and preventing ambiguity
+
+You can select the solver method when evaluating:
 
 ```python
-# Create a 3D interpolator (x, y, z dimensions)
-interpolator = KeyframeInterpolator(dimensions=3)
+# Use the default topological solver (recommended)
+results = solver.solve(0.5)
 
-# Set a keyframe with all three dimensions
-interpolator.set_keyframe(0.0, [0, 0, 0])  # Start at origin
-interpolator.set_keyframe(0.5, [10, 20, 5])  # Mid-point
-interpolator.set_keyframe(1.0, [20, 0, 10])  # End point
+# Explicitly specify the solver method
+results = solver.solve(0.5, method="topo")  # Topological (default)
+results = solver.solve(0.5, method="ondemand")  # On-demand (legacy)
 
-# Get the interpolated 3D position at t=0.25
-position = interpolator.get_value(0.25)  # Returns something like [5, 10, 2.5]
-
-# Access a specific dimension
-x_value = interpolator.get_dimension_value(0.25, "x")
+# Also works with multiple positions
+results = solver.solve_multiple([0.1, 0.2, 0.3], method="topo")
 ```
 
-You can extract a specific dimension from an interpolator using the dot notation:
+From the command line, specify the solver method:
+
 ```bash
-# Extract just the x dimension from the position interpolator
-python splinaltap --scene "extract scene.json position_x.json position.x"
+# Use topological solver (default)
+python splinaltap --input-file data.json --samples 100
+
+# Explicitly specify the solver method
+python splinaltap --input-file data.json --samples 100 --solver-method topo
+python splinaltap --input-file data.json --samples 100 --solver-method ondemand
 ```
 
-#### 3. Channels: Dynamic Parameters for Expressions
+The topological solver is especially beneficial for complex dependency chains, where one channel's value depends on multiple other channels. It ensures that all dependencies are properly resolved in the correct order, improving both performance and accuracy.
 
-Channels are external parameters that you pass at evaluation time to influence expressions,
-without changing the keyframes themselves. Think of them as runtime inputs or control knobs.
+#### 2. Channels: Components of a Spline
+
+Channels represent individual components of a spline (like x, y, z components of a vector). 
+Each channel has its own set of keyframes and interpolation method but shares the same normalized parametric range.
 
 ```python
-# Define keyframes that use channel values
-interpolator.set_keyframe(0.3, "a * sin(t) + b")  # Expression uses channels 'a' and 'b'
+# Create a 3D vector spline with x, y, z channels
+spline = Spline()
+spline.add_channel("x")
+spline.add_channel("y")
+spline.add_channel("z")
 
-# Evaluate with different channel values
-channels_1 = {"a": 1.0, "b": 0.5}  # First configuration
-channels_2 = {"a": 2.0, "b": 0.0}  # Second configuration
+# Set keyframes for each channel
+spline.channels["x"].add_keyframe(at=0.0, value=0)
+spline.channels["x"].add_keyframe(at=1.0, value=10)
 
-# Same keyframes, different results based on channel values
-positions = [i * 0.01 for i in range(101)]
-values_1 = [interpolator.get_value(p, "cubic", channels_1) for p in positions]
-values_2 = [interpolator.get_value(p, "cubic", channels_2) for p in positions]
+spline.channels["y"].add_keyframe(at=0.0, value=0)
+spline.channels["y"].add_keyframe(at=1.0, value=20)
+
+spline.channels["z"].add_keyframe(at=0.0, value=0)
+spline.channels["z"].add_keyframe(at=1.0, value=5)
+
+# Get the interpolated vector at position 0.25
+values = spline.get_value(0.25)  # Returns {"x": 2.5, "y": 5.0, "z": 1.25}
+
+# Access a specific channel
+x_value = spline.get_channel_value("x", 0.25)  # Returns 2.5
 ```
+
+You can extract a specific channel from a spline using the dot notation:
+```bash
+# Extract just the x channel from the coordinates spline
+python splinaltap --scene "extract scene.json coordinates_x.json coordinates.x"
+```
+
+#### 3. External Channels vs. Variables
+
+SplinalTap has two distinct ways to parameterize expressions:
+
+1. **Variables**: Constants defined at creation time, baked into expressions for all evaluations
+   ```python
+   # Set a variable that can be used in keyframe expressions
+   solver.set_variable("amplitude", 2.5)
+   
+   # Use in keyframe expressions
+   channel.add_keyframe(at=0.5, value="sin(t) * amplitude")
+   ```
+
+2. **External Channels**: Dynamic values passed at evaluation time to influence expressions
+   ```python
+   # Define keyframes that use external channel values
+   channel.add_keyframe(at=0.5, value="a * sin(t) + b")  # Uses channels 'a' and 'b'
+   
+   # Evaluate with different channel values
+   ext_channels = {"a": 1.0, "b": 0.5}  # External parameters
+   value = channel.get_value(0.5, ext_channels)
+   ```
 
 **Key Differences Summary**: 
 
-- **Interpolators** are complete, named animation curves or properties (position, rotation, etc.)
-- **Dimensions** are components of an interpolator (x, y, z coordinates) with their own keyframes
-- **Channels** are dynamic inputs passed at evaluation time to parameterize expressions
-- **Variables** are constants defined at creation time and baked into the interpolator
+- **Splines** are complete, named interpolation functions (coordinates, phase, etc.)
+- **Channels** are components of a spline (x, y, z components) with their own keyframes and interpolation methods
+- **External channels** are dynamic inputs passed at evaluation time to parameterize expressions
+- **Variables** are constants defined at creation time and baked into expressions
 
 **Hierarchy**:
 ```
-Scene
- ├─ Interpolator: "position" (a named animation property)
- │   ├─ Dimension: "x" (component with its own keyframes)
- │   ├─ Dimension: "y" (component with its own keyframes)
- │   └─ Dimension: "z" (component with its own keyframes)
+Solver
+ ├─ Spline: "coordinates" (a vector quantity)
+ │   ├─ Channel: "x" (component with its own keyframes and interpolation)
+ │   ├─ Channel: "y" (component with its own keyframes and interpolation)
+ │   └─ Channel: "z" (component with its own keyframes and interpolation)
  │
- ├─ Interpolator: "rotation" (another animation property)
- │   ├─ Dimension: "x" (component with its own keyframes)
- │   ├─ Dimension: "y" (component with its own keyframes)
- │   └─ Dimension: "z" (component with its own keyframes)
+ ├─ Spline: "phase" (a scalar quantity)
+ │   └─ Channel: "angle" (component with its own keyframes and interpolation)
  │
- └─ Interpolator: "scale" (a single-dimension property)
-     └─ (single value with keyframes)
+ └─ Spline: "magnitude" (a multi-component quantity)
+     ├─ Channel: "x" (component with its own keyframes and interpolation)
+     └─ Channel: "y" (component with its own keyframes and interpolation)
 ```
-
-### Using Control Points (Bezier)
-
-```python
-# Set keyframe with control points for Bezier interpolation
-interpolator.set_keyframe(0.4, 5.0, derivative=None, control_points=(0.42, 6.0, 0.48, 7.0))
-```
-
-### Using GPU Acceleration
-
-```python
-from splinaltap import KeyframeInterpolator
-from splinaltap.backends import BackendManager
-
-# Let splinaltap choose the best backend for your workload
-BackendManager.use_best_available(data_size=1_000_000, method="cubic")
-print(f"Selected backend: {BackendManager.get_backend().name}")
-
-# Create interpolator and keyframes
-interpolator = KeyframeInterpolator()  # Default normalized 0-1 range
-interpolator.set_keyframe(0.0, 0)
-interpolator.set_keyframe(1.0, 10)
-
-# Generate 1 million samples efficiently using the best available backend
-samples = interpolator.sample_with_gpu(0, 1, 1_000_000, method="cubic")
-```
-
-### Exporting to Shader Code
-
-Splinaltap can export your keyframe interpolation as shader code for use in graphics applications:
-
-```python
-from splinaltap import KeyframeInterpolator
-
-# Create interpolator with keyframes
-interpolator = KeyframeInterpolator()  # Normalized 0-1 range
-interpolator.set_keyframe(0.0, 0)
-interpolator.set_keyframe(0.25, 5)
-interpolator.set_keyframe(0.75, 2)
-interpolator.set_keyframe(1.0, 10)
-
-# Export as GLSL shader function
-glsl_code = interpolator.export_function(language="glsl", method="linear")
-print(glsl_code)
-
-# Export as C/C++ function
-c_code = interpolator.export_function(language="c", method="linear")
-print(c_code)
-```
-
-Example GLSL output:
-```glsl
-// GLSL linear interpolation function for 4 keyframes
-float linearInterpolate(float t) {
-    // Keyframe positions
-    float positions[4] = float[4](0.000000, 0.250000, 0.750000, 1.000000);
-    // Keyframe values
-    float values[4] = float[4](0.000000, 5.000000, 2.000000, 10.000000);
-
-    // Handle out-of-range positions
-    if (t <= positions[0]) return values[0];
-    if (t >= positions[3]) return values[3];
-
-    // Find the bracketing keyframes
-    for (int i = 0; i < positions.length() - 1; i++) {
-        if (positions[i] <= t && t <= positions[i + 1]) {
-            float alpha = (t - positions[i]) / (positions[i + 1] - positions[i]);
-            return mix(values[i], values[i + 1], alpha);
-        }
-    }
-
-    // Fallback (should never reach here)
-    return values[0];
-}
-```
-
-## Performance Considerations
-
-Splinaltap uses a tiered approach to performance optimization, automatically choosing the best available implementation based on your hardware and installed packages:
-
-1. **CUDA/CuPy kernels**: Fastest option for large-scale processing on NVIDIA GPUs
-2. **JAX/Numba JIT compilation**: Fast GPU and CPU acceleration with automatic optimization
-3. **Vectorized NumPy/CuPy**: Efficient batch operations for moderate-sized datasets
-4. **Pure Python**: Universal fallback that works everywhere
-
-### CPU vs GPU Performance Tradeoffs
-
-| Operation | CPU Better Than GPU | GPU Better Than CPU |
-|-----------|---------------------|---------------------|
-| Linear interpolation | < 50,000 points | > 100,000 points |
-| Cubic/complex interpolation | < 10,000 points | > 20,000 points |
-| Multiple properties | < 1,000 properties | > 1,000 properties |
-| Interactive editing | Real-time adjustments | Batch processing |
-| Small animations | Few frames/keyframes | Complex render pipelines |
-
-### GPU Overhead Considerations
-
-When using GPU acceleration, be aware of these overhead costs:
-- PCIe data transfer: ~1-2ms base latency
-- GPU memory allocation: ~0.5-1ms
-- Kernel launch: ~5-10μs per call
-
-For maximum performance with GPU acceleration:
-1. Process data in large batches when possible
-2. Keep data on the GPU if it will be used for further processing
-3. For interactive applications, consider CPU acceleration with Numba for lower latency
-
-```python
-# Example: Choosing the optimal backend automatically
-from splinaltap import KeyframeInterpolator
-from splinaltap.backends import BackendManager
-
-# Let splinaltap choose the best backend for your system
-BackendManager.use_best_available()
-
-# Create a complex interpolation
-interpolator = KeyframeInterpolator()  # Normalized 0-1 range
-interpolator.set_keyframe(0.0, 0)
-interpolator.set_keyframe(0.25, "sin(t) + 1")
-interpolator.set_keyframe(0.5, "t^2")
-interpolator.set_keyframe(1.0, 10)
-
-# Generate samples with optimal performance
-samples = interpolator.sample_range(0, 1, 100_000, method="cubic")
-```
-
-## Applications
-
-- Animation systems
-- Scientific data interpolation
-- Audio parameter automation
-- Financial data modeling
-- Simulation systems
-- Game development
-- Procedural content generation
 
 ## Contributing
 

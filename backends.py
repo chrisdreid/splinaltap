@@ -483,6 +483,51 @@ class JaxBackend(Backend):
     solve = jnp.linalg.solve if HAS_JAX else None
     
     @classmethod
+    def get_math_functions(cls):
+        """Get common math functions from this backend.
+        
+        Returns:
+            Dictionary of math functions and constants.
+        """
+        import random
+        
+        # Define the randint function to handle both forms:
+        # randint([min, max]) - returns random int between min and max (inclusive)
+        # randint(max) - returns random int between 0 and max (inclusive)
+        def randint_func(min_max):
+            if isinstance(min_max, (list, tuple)) and len(min_max) >= 2:
+                return random.randint(int(min_max[0]), int(min_max[1]))
+            else:
+                return random.randint(0, int(min_max))
+        
+        # Handle JAX/NumPy array conversion to native types
+        def safe_result_func(func):
+            def wrapper(*args, **kwargs):
+                result = func(*args, **kwargs)
+                # If result is a JAX/NumPy array with a single value, convert to Python scalar
+                if hasattr(result, 'item') and hasattr(result, 'size') and result.size == 1:
+                    return result.item()
+                return result
+            return wrapper
+        
+        # Wrap all backend functions to ensure they return Python scalar values
+        math_functions = {
+            'sin': safe_result_func(cls.sin),
+            'cos': safe_result_func(cls.cos),
+            'tan': safe_result_func(cls.tan),
+            'sqrt': safe_result_func(cls.sqrt), 
+            'log': safe_result_func(cls.log), 
+            'exp': safe_result_func(cls.exp),
+            'pow': safe_result_func(cls.pow),
+            'pi': cls.pi if not hasattr(cls.pi, 'item') else cls.pi.item(),
+            'e': cls.e if not hasattr(cls.e, 'item') else cls.e.item(),
+            'rand': random.random,
+            'randint': randint_func
+        }
+        
+        return math_functions
+    
+    @classmethod
     def setup(cls) -> None:
         """Set up the JAX backend."""
         if not HAS_JAX:
@@ -821,15 +866,42 @@ def get_math_functions():
     Returns:
         Dictionary of math functions and constants from the current backend.
     """
+    import random
+    
     backend = BackendManager.get_backend()
-    return {
-        'sin': backend.sin,
-        'cos': backend.cos,
-        'tan': backend.tan,
-        'sqrt': backend.sqrt,
-        'log': backend.log,
-        'exp': backend.exp,
-        'pow': backend.pow,
-        'pi': backend.pi,
-        'e': backend.e
+    
+    # Define the randint function to handle both forms:
+    # randint([min, max]) - returns random int between min and max (inclusive)
+    # randint(max) - returns random int between 0 and max (inclusive)
+    def randint_func(min_max):
+        if isinstance(min_max, (list, tuple)) and len(min_max) >= 2:
+            return random.randint(int(min_max[0]), int(min_max[1]))
+        else:
+            return random.randint(0, int(min_max))
+    
+    # Handle NumPy array conversion to native types
+    def safe_result_func(func):
+        def wrapper(*args, **kwargs):
+            result = func(*args, **kwargs)
+            # If result is a NumPy array with a single value, convert to Python scalar
+            if hasattr(result, 'item') and hasattr(result, 'size') and result.size == 1:
+                return result.item()
+            return result
+        return wrapper
+    
+    # Wrap all backend functions to ensure they return Python scalar values
+    math_functions = {
+        'sin': safe_result_func(backend.sin),
+        'cos': safe_result_func(backend.cos),
+        'tan': safe_result_func(backend.tan),
+        'sqrt': safe_result_func(backend.sqrt), 
+        'log': safe_result_func(backend.log), 
+        'exp': safe_result_func(backend.exp),
+        'pow': safe_result_func(backend.pow),
+        'pi': backend.pi if not hasattr(backend.pi, 'item') else backend.pi.item(),
+        'e': backend.e if not hasattr(backend.e, 'item') else backend.e.item(),
+        'rand': random.random,
+        'randint': randint_func
     }
+    
+    return math_functions

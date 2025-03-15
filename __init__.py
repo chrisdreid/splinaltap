@@ -2,14 +2,19 @@
 splinaltap - Keyframe interpolation and expression evaluation that goes to eleven!
 """
 
-from .interpolator import KeyframeInterpolator
+from .channel import Channel, Keyframe
+from .spline import Spline
+from .solver import KeyframeSolver
+from .expression import ExpressionEvaluator
 from .visualization import plot_interpolation_comparison, plot_single_interpolation
-from .scene import Scene
 
-__version__ = "0.1.0"
+__version__ = "0.3.0"
 __all__ = [
-    "KeyframeInterpolator", 
+    "KeyframeSolver",
+    "Spline",
+    "Channel", 
+    "Keyframe",
+    "ExpressionEvaluator",
     "plot_interpolation_comparison", 
     "plot_single_interpolation",
-    "Scene"
 ]
