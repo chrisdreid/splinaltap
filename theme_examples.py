@@ -102,47 +102,111 @@ def generate_theme_examples(output_dir=None):
         )
     if not os.path.exists(output_dir):
         os.makedirs(output_dir)
-        
-    # Create the example solver
-    solver = create_complex_solver()
     
-    # Generate overlay plots for all themes
+    # Create a cleaner, simpler solver for SVG examples
+    clean_solver = KeyframeSolver(name="VisualExamples")
+    
+    # Add variables for expressions
+    clean_solver.set_variable("pi", math.pi)
+    
+    # Create position spline with multiple channels using different interpolation methods
+    position = clean_solver.create_spline("position")
+    
+    # Cubic interpolation channel
+    cubic = position.add_channel("cubic", interpolation="cubic")
+    cubic.add_keyframe(at=0.0, value=0.0)
+    cubic.add_keyframe(at=0.25, value=2.5)
+    cubic.add_keyframe(at=0.75, value=-2.5)
+    cubic.add_keyframe(at=1.0, value=0.0)
+    
+    # Linear interpolation channel
+    linear = position.add_channel("linear", interpolation="linear")
+    linear.add_keyframe(at=0.0, value=0.0)
+    linear.add_keyframe(at=0.25, value=2.0)
+    linear.add_keyframe(at=0.5, value=0.0)
+    linear.add_keyframe(at=0.75, value=-2.0)
+    linear.add_keyframe(at=1.0, value=0.0)
+    
+    # Bezier interpolation with control points
+    bezier = position.add_channel("bezier", interpolation="bezier")
+    bezier.add_keyframe(at=0.0, value=0.0, control_points=[0.1, 3.0, 0.2, 3.5])
+    bezier.add_keyframe(at=0.5, value=0.0, control_points=[0.3, -3.5, 0.4, -3.0])
+    bezier.add_keyframe(at=1.0, value=0.0, control_points=[0.6, 3.0, 0.9, 1.0])
+    
+    # Create expression spline
+    expressions = clean_solver.create_spline("expressions")
+    
+    # Sine wave with expression
+    sine = expressions.add_channel("sine", interpolation="cubic")
+    sine.add_keyframe(at=0.0, value="sin(t * 2 * pi) * 2.5")
+    
+    # Hermite interpolation with derivatives
+    hermite = expressions.add_channel("hermite", interpolation="hermite")
+    hermite.add_keyframe(at=0.0, value=-3.0, derivative=0.0)
+    hermite.add_keyframe(at=0.33, value=1.0, derivative=6.0)
+    hermite.add_keyframe(at=0.66, value=1.0, derivative=-6.0)
+    hermite.add_keyframe(at=1.0, value=-3.0, derivative=0.0)
+    
+    # Generate high quality SVG images with 300 samples
     image_paths = []
     
     # Dark theme (default)
-    dark_path = os.path.join(output_dir, "theme_dark.png")
-    solver.save_plot(dark_path, samples=200, theme="dark", overlay=True)
+    dark_path = os.path.join(output_dir, "theme_dark.svg")
+    clean_solver.save_plot(dark_path, samples=300, theme="dark", overlay=True)
     image_paths.append(dark_path)
     
     # Medium theme
-    medium_path = os.path.join(output_dir, "theme_medium.png")
-    solver.save_plot(medium_path, samples=200, theme="medium", overlay=True)
+    medium_path = os.path.join(output_dir, "theme_medium.svg")
+    clean_solver.save_plot(medium_path, samples=300, theme="medium", overlay=True)
     image_paths.append(medium_path)
     
     # Light theme
-    light_path = os.path.join(output_dir, "theme_light.png")
-    solver.save_plot(light_path, samples=200, theme="light", overlay=True)
+    light_path = os.path.join(output_dir, "theme_light.svg")
+    clean_solver.save_plot(light_path, samples=300, theme="light", overlay=True)
     image_paths.append(light_path)
     
     # Generate separate plots (non-overlay)
-    separated_path = os.path.join(output_dir, "separate_splines.png")
-    solver.save_plot(separated_path, samples=200, theme="dark", overlay=False)
+    separated_path = os.path.join(output_dir, "separate_splines.svg")
+    clean_solver.save_plot(separated_path, samples=300, theme="dark", overlay=False)
     image_paths.append(separated_path)
     
     # Filtered plots (only specific channels)
     filter_channels = {
-        "expressions": ["sine", "cosine"],
-        "position": ["x"]
+        "position": ["cubic", "bezier"]
     }
-    filtered_path = os.path.join(output_dir, "filtered_channels.png")
-    solver.save_plot(filtered_path, samples=200, theme="dark", filter_channels=filter_channels)
+    filtered_path = os.path.join(output_dir, "filtered_channels.svg")
+    clean_solver.save_plot(filtered_path, samples=300, theme="dark", filter_channels=filter_channels)
     image_paths.append(filtered_path)
     
     # Single spline plot (position)
-    position = solver.get_spline("position")
-    position_path = os.path.join(output_dir, "single_spline.png")
-    position.save_plot(position_path, samples=200, theme="dark", title="Position Channels")
+    position = clean_solver.get_spline("position")
+    position_path = os.path.join(output_dir, "single_spline.svg")
+    position.save_plot(position_path, samples=300, theme="dark")
     image_paths.append(position_path)
+    
+    # Create a more visual example specifically for the README
+    example_solver = KeyframeSolver(name="ExampleSolver")
+    example_solver.set_variable("pi", math.pi)
+    
+    # Create a main spline for the example
+    example = example_solver.create_spline("example")
+    
+    # Add different interpolation methods to show in example
+    cubic = example.add_channel("cubic", interpolation="cubic")
+    cubic.add_keyframe(at=0.0, value=0.0)
+    cubic.add_keyframe(at=0.3, value=2.0)
+    cubic.add_keyframe(at=0.7, value=-1.0)
+    cubic.add_keyframe(at=1.0, value=0.0)
+    
+    bezier = example.add_channel("bezier", interpolation="bezier")
+    bezier.add_keyframe(at=0.0, value=-2.0, control_points=[0.1, 0.0, 0.2, 1.0])
+    bezier.add_keyframe(at=0.5, value=3.0, control_points=[0.3, 5.0, 0.4, 4.0])
+    bezier.add_keyframe(at=1.0, value=-2.0, control_points=[0.6, 1.0, 0.9, -3.0])
+    
+    # Create a visually appealing example for the README
+    example_path = os.path.join(output_dir, "example-01.svg")
+    example_solver.save_plot(example_path, samples=300, theme="dark")
+    image_paths.append(example_path)
     
     return image_paths
 
