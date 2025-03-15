@@ -280,7 +280,7 @@ class Spline:
         self,
         samples: Optional[int] = None,
         filter_channels: Optional[List[str]] = None,
-        theme: str = "light",
+        theme: str = "dark",
         title: Optional[str] = None,
         save_path: Optional[str] = None
     ):
@@ -333,9 +333,32 @@ class Spline:
                 'ytick.color': '#aaaaaa',
                 'figure.edgecolor': '#121212',
                 'savefig.facecolor': '#121212',
-                'savefig.edgecolor': '#121212'
+                'savefig.edgecolor': '#121212',
+                'legend.facecolor': '#121212',
+                'legend.edgecolor': '#444444',
+                'patch.edgecolor': '#444444'
             })
-        else:
+        elif theme == "medium":
+            plt.style.use('default')  # Base on default style
+            color_palette = ['#ff9500', '#00b9f1', '#fb02fe', '#01ff66', '#fffd01', '#ff2301']
+            grid_color = '#cccccc'
+            plt.rcParams.update({
+                'text.color': '#333333',
+                'axes.labelcolor': '#333333',
+                'axes.edgecolor': '#aaaaaa',
+                'axes.facecolor': '#eeeeee',
+                'figure.facecolor': '#f5f5f5',
+                'grid.color': '#cccccc',
+                'xtick.color': '#333333',
+                'ytick.color': '#333333',
+                'figure.edgecolor': '#f5f5f5',
+                'savefig.facecolor': '#f5f5f5',
+                'savefig.edgecolor': '#f5f5f5',
+                'legend.facecolor': '#eeeeee',
+                'legend.edgecolor': '#aaaaaa',
+                'patch.edgecolor': '#aaaaaa'
+            })
+        else:  # light theme
             plt.style.use('default')
             color_palette = ['#1f77b4', '#ff7f0e', '#2ca02c', '#d62728', '#9467bd', '#8c564b']
             grid_color = 'lightgray'
@@ -362,9 +385,11 @@ class Spline:
         # Add grid and legend
         ax.grid(True, linestyle='--', alpha=0.7, color=grid_color)
         
-        # Use custom legend style in dark mode
+        # Use custom legend style for each theme
         if theme == "dark":
             ax.legend(facecolor='#121212', edgecolor='#444444', labelcolor='white')
+        elif theme == "medium":
+            ax.legend(facecolor='#eeeeee', edgecolor='#aaaaaa', labelcolor='#333333')
         else:
             ax.legend()
         
@@ -383,7 +408,7 @@ class Spline:
         filepath: str,
         samples: Optional[int] = None,
         filter_channels: Optional[List[str]] = None,
-        theme: str = "light",
+        theme: str = "dark",
         title: Optional[str] = None
     ) -> None:
         """Save a plot of the spline's channels to a file.
@@ -405,7 +430,7 @@ class Spline:
         self,
         samples: Optional[int] = None,
         filter_channels: Optional[List[str]] = None,
-        theme: str = "light",
+        theme: str = "dark",
         title: Optional[str] = None,
         save_path: Optional[str] = None
     ):

@@ -466,14 +466,23 @@ try:
 except ImportError:
     print("Matplotlib is not installed for manual plotting")
 
-# Plot the entire solver with all splines and channels in a single graph
-solver.plot(samples=100, theme="light", overlay=True)  # Default behavior
+# Plot the entire solver with the default dark theme
+solver.plot(samples=100)  # Default: dark theme, overlay=True
 
-# Plot the entire solver with each spline in its own subplot
+# Plot with medium theme
+solver.plot(samples=100, theme="medium")
+
+# Plot with light theme
+solver.plot(samples=100, theme="light")
+
+# Plot with each spline in its own subplot
 solver.plot(samples=100, overlay=False)
 
-# Plot with dark theme and save to file
-solver.plot(samples=100, theme="dark", save_path="dark_theme_plot.png") 
+# Plot and save to file in one operation
+solver.plot(samples=100, save_path="dark_theme_plot.png")
+
+# Save plot without displaying
+solver.save_plot("plot_file.png", samples=100)
 
 # Plot only specific channels
 solver.plot(
@@ -1095,9 +1104,84 @@ python splinaltap --visualize theme=dark save=dark_plot.png --keyframes "0:0@cub
 ```
 
 Available visualization options:
-- `theme=light|dark`: Set the plot theme (default: light)
+- `theme=dark|medium|light`: Set the plot theme (default: dark)
 - `save=/path/to/file.png`: Save the plot to a file instead of or in addition to displaying it
 - `overlay=true|false`: If true (default), all channels are plotted in a single graph; if false, each spline gets its own subplot
+
+**Visual themes:**
+![Visual Themes](/unittest/theme_dark.png)
+*Dark theme (default)*
+
+![Medium Theme](/unittest/theme_medium.png)
+*Medium theme*
+
+![Light Theme](/unittest/theme_light.png)
+*Light theme*
+
+**Overlay vs. Separate:**
+![Overlay=false](/unittest/separate_splines.png)
+*Separate splines (overlay=false)*
+
+**Complex Visualization Example:**
+
+```python
+# API Example: Create a complex visualization
+from splinaltap.solver import KeyframeSolver
+
+# Create solver with multiple splines and channels
+solver = KeyframeSolver(name="ComplexVisExample")
+
+# Position spline with x,y,z channels
+position = solver.create_spline("position")
+x = position.add_channel("x", interpolation="cubic")
+y = position.add_channel("y", interpolation="linear")
+z = position.add_channel("z", interpolation="step")
+
+# Add keyframes
+x.add_keyframe(at=0.0, value=0.0)
+x.add_keyframe(at=0.25, value=5.0)  
+x.add_keyframe(at=0.5, value=0.0)
+x.add_keyframe(at=0.75, value=-5.0)
+x.add_keyframe(at=1.0, value=0.0)
+
+y.add_keyframe(at=0.0, value=0.0)
+y.add_keyframe(at=0.2, value=3.0)
+y.add_keyframe(at=0.8, value=-1.0)
+y.add_keyframe(at=1.0, value=0.0)
+
+z.add_keyframe(at=0.0, value=0.0)
+z.add_keyframe(at=0.4, value=-2.0)
+z.add_keyframe(at=0.6, value=1.0)
+z.add_keyframe(at=1.0, value=0.0)
+
+# Generate a high-resolution plot with 300 samples
+solver.plot(samples=300, theme="dark")  # Default: overlay=True
+
+# Save separate plots for each spline
+solver.save_plot("separate_plots.png", samples=200, overlay=False)
+
+# Filter to show only specific channels
+filter_channels = {
+    "position": ["x", "y"]  # Only show position.x and position.y
+}
+solver.plot(samples=200, filter_channels=filter_channels)
+```
+
+**CLI Visualization Example:**
+
+```bash
+# Generate dark theme plot (default)
+python -m splinaltap.cli --keyframes "0:0@cubic" "0.25:5@cubic" "0.5:0@cubic" "0.75:-5@cubic" "1:0@cubic" --samples 200 --visualize save=theme_dark_cli.png
+
+# Generate medium theme plot
+python -m splinaltap.cli --keyframes "0:0@cubic" "0.25:5@cubic" "0.5:0@cubic" "0.75:-5@cubic" "1:0@cubic" --samples 200 --visualize theme=medium save=theme_medium_cli.png
+
+# Generate light theme plot
+python -m splinaltap.cli --keyframes "0:0@cubic" "0.25:5@cubic" "0.5:0@cubic" "0.75:-5@cubic" "1:0@cubic" --samples 200 --visualize theme=light save=theme_light_cli.png
+
+# Generate separated subplots
+python -m splinaltap.cli --keyframes "0:0@cubic" "0.25:5@cubic" "0.5:0@cubic" "0.75:-5@cubic" "1:0@cubic" --samples 200 --visualize overlay=false save=separate_cli.png
+```
 
 These visualization options directly utilize the Solver's built-in plotting methods, which are also available programmatically through the Python API.
 
