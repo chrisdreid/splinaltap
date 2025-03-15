@@ -69,10 +69,17 @@ channel.add_keyframe(at=0.5, value="sin(t * pi) * 10")  # Use expression with t 
 channel.add_keyframe(at=1.0, value=0)             # End at 0
 
 # Evaluate at any point
-value = channel.get_value(0.25)                  # ≈ 7.07 (using cubic interpolation)
+value = channel.get_value(0.25)                  # ≈ 6.25 (using cubic interpolation)
 
 # Evaluate across splines
 result = solver.solve(0.5)                       # Get all channel values at position 0.5
+
+# Visualization features (requires matplotlib)
+solver.plot()                                    # Display plot with all channels
+solver.plot(theme="dark")                        # Use dark theme
+solver.save_plot("output.png")                   # Save plot to file without displaying
+solver.get_plot()                                # Get figure for customization
+solver.show()                                    # Show most recently created plot
 ```
 
 ## Advanced Usage
@@ -213,6 +220,9 @@ python splinaltap --keyframes "0:0@cubic" "0.5:10@cubic" "1:0@cubic" --samples 0
 # Create a visualization with sin wave using mathematical expressions
 python splinaltap --visualize --keyframes "0:0@cubic" "0.5:sin(t*3.14159)@cubic" "1:0@cubic" --samples 100
 
+# Visualize with dark theme and save to a file
+python splinaltap --visualize theme=dark save=output.png --keyframes "0:0@cubic" "0.5:10@cubic" "1:0@cubic" --samples 100
+
 # Use custom sample range (from 2.0 to 3.0 instead of 0-1)
 python splinaltap --keyframes "0:0" "1:10" --samples 5 --range 2,3
 
@@ -251,6 +261,9 @@ pip install numpy
 
 # For YAML output format support
 pip install pyyaml
+
+# For visualization and plotting capabilities
+pip install matplotlib
 
 # For CUDA 11.x GPU support
 pip install cupy-cuda11x
@@ -405,8 +418,7 @@ If the backends are properly installed, you should see successful output from th
 ## Quick Start
 
 ```python
-from splinaltap import KeyframeSolver, Spline, Channel
-import matplotlib.pyplot as plt
+from splinaltap import KeyframeSolver
 
 # Create a solver and spline
 solver = KeyframeSolver(name="Interpolation")
@@ -427,16 +439,47 @@ channel.add_keyframe(at=0.7, value="amplitude * sin(t)")
 channel.add_keyframe(at=0.9, value="rand() * 5")          # Random float between 0 and 5
 channel.add_keyframe(at=0.95, value="randint([1, 10])")   # Random integer between 1 and 10
 
-# Evaluate at various points
-positions = [i * 0.01 for i in range(101)]
-values = [channel.get_value(p) for p in positions]
+# Option 1: Using the built-in plotting methods
+# Plot the spline directly (if matplotlib is installed)
+spline.plot(samples=100, title="Cubic Spline Interpolation")
 
-# Plot the results
-plt.figure(figsize=(12, 6))
-plt.plot(positions, values)
-plt.title("Cubic Spline Interpolation")
-plt.grid(True)
-plt.show()
+# Save a plot to a file
+spline.save_plot("spline_plot.png", samples=100, title="Cubic Spline Interpolation")
+
+# Get a plot for customization
+fig = spline.get_plot(samples=100, title="Cubic Spline Interpolation")
+
+# Option 2: Manual plotting with matplotlib
+try:
+    import matplotlib.pyplot as plt
+
+    # Evaluate at various points
+    positions = [i * 0.01 for i in range(101)]
+    values = [channel.get_value(p) for p in positions]
+
+    # Plot the results
+    plt.figure(figsize=(12, 6))
+    plt.plot(positions, values)
+    plt.title("Cubic Spline Interpolation")
+    plt.grid(True)
+    plt.show()
+except ImportError:
+    print("Matplotlib is not installed for manual plotting")
+
+# Plot the entire solver with all splines and channels
+solver.plot(samples=100, theme="light")  # Also supports 'dark' theme
+
+# Plot with dark theme and save to file
+solver.plot(samples=100, theme="dark", save_path="dark_theme_plot.png") 
+
+# Plot only specific channels
+solver.plot(
+    samples=100,
+    filter_channels={"main": ["value"]}  # Only plot main.value channel
+)
+
+# Show most recently created plot (useful in interactive shells)
+solver.show()
 ```
 
 ## Command Line Interface
@@ -650,6 +693,7 @@ SplinalTap supports two main JSON file formats: single-dimension interpolators a
 ### Working with Solver Files
 
 A Solver is a collection of multiple named splines, which can be useful for complex datasets with multiple parameters. Here's an example of a Solver file structure:
+
 
 ```json
 {
@@ -1028,6 +1072,30 @@ value = data["results"]["position"]["x"][1]  # 5.0
 The hierarchical organization also makes the output more readable and maintains the logical structure of the data.
 
 For more details on each command, run `splinaltap <command> --help`.
+
+### Visualization Options
+
+SplinalTap provides built-in visualization capabilities through the `--visualize` command. You can customize the visualization using key=value pairs directly with the command:
+
+```bash
+# Basic visualization (shows a plot)
+python splinaltap --visualize --keyframes "0:0@cubic" "0.5:10@cubic" "1:0@cubic" --samples 100
+
+# Use dark theme
+python splinaltap --visualize theme=dark --keyframes "0:0@cubic" "0.5:10@cubic" "1:0@cubic"
+
+# Save to file without displaying
+python splinaltap --visualize save=plot.png --keyframes "0:0@cubic" "0.5:10@cubic" "1:0@cubic"
+
+# Combine options
+python splinaltap --visualize theme=dark save=dark_plot.png --keyframes "0:0@cubic" "0.5:10@cubic" "1:0@cubic"
+```
+
+Available visualization options:
+- `theme=light|dark`: Set the plot theme (default: light)
+- `save=/path/to/file.png`: Save the plot to a file instead of or in addition to displaying it
+
+These visualization options directly utilize the Solver's built-in plotting methods, which are also available programmatically through the Python API.
 
 ## API Usage Examples
 

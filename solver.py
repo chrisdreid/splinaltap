@@ -640,6 +640,204 @@ class KeyframeSolver:
         """
         # Apply range normalization separately to each position
         return [self.solve(position, external_channels, method=method) for position in positions]
+        
+    def get_plot(
+        self, 
+        samples: Optional[int] = None, 
+        filter_channels: Optional[Dict[str, List[str]]] = None, 
+        theme: str = "light",
+        save_path: Optional[str] = None
+    ) -> 'matplotlib.figure.Figure':
+        """Generate a plot for the solver's splines and channels.
+        
+        Args:
+            samples: Number of evenly spaced samples to use (defaults to 100)
+            filter_channels: Optional dictionary mapping spline names to lists of channel names to include
+                            (e.g., {'position': ['x', 'y'], 'rotation': ['angle']})
+            theme: Plot theme - 'light' or 'dark'
+            save_path: Optional file path to save the plot (e.g., 'plot.png')
+            
+        Returns:
+            The matplotlib figure
+            
+        Raises:
+            ImportError: If matplotlib is not available
+        """
+        try:
+            import matplotlib.pyplot as plt
+            from matplotlib.gridspec import GridSpec
+        except ImportError:
+            raise ImportError("Plotting requires matplotlib. Install it with: pip install matplotlib")
+            
+        # Default number of samples
+        if samples is None:
+            samples = 100
+            
+        # Generate sample positions
+        positions = [i / (samples - 1) for i in range(samples)]
+        
+        # If no filter is provided, include all splines and channels
+        if filter_channels is None:
+            filter_channels = {}
+            for spline_name in self.splines:
+                filter_channels[spline_name] = list(self.splines[spline_name].channels.keys())
+                
+        # Determine the number of splines to plot
+        num_splines = len(filter_channels)
+        
+        # Create a figure with subplots for each spline
+        fig = plt.figure(figsize=(12, 4 * num_splines))
+        gs = GridSpec(num_splines, 1, figure=fig)
+        
+        # Set theme
+        if theme == "dark":
+            plt.style.use('dark_background')
+            color_palette = ['#ff9500', '#00b9f1', '#fb02fe', '#01ff66', '#fffd01', '#ff2301']
+            grid_color = 'gray'
+        else:
+            plt.style.use('default')
+            color_palette = ['#1f77b4', '#ff7f0e', '#2ca02c', '#d62728', '#9467bd', '#8c564b']
+            grid_color = 'lightgray'
+            
+        # Evaluate all channels at the sample positions
+        results = []
+        for position in positions:
+            results.append(self.solve(position))
+            
+        # Plot each spline in its own subplot
+        for i, (spline_name, channel_names) in enumerate(filter_channels.items()):
+            if spline_name not in self.splines:
+                continue
+                
+            # Create subplot
+            ax = fig.add_subplot(gs[i])
+            
+            # Set subplot title
+            ax.set_title(f"Spline: {spline_name}")
+            
+            # Extract channel values at each sample position
+            channel_values = {}
+            for channel_name in channel_names:
+                if channel_name in self.splines[spline_name].channels:
+                    channel_values[channel_name] = []
+                    for j, position in enumerate(positions):
+                        if spline_name in results[j] and channel_name in results[j][spline_name]:
+                            channel_values[channel_name].append(results[j][spline_name][channel_name])
+                        else:
+                            # If channel isn't in result, use 0 or the previous value
+                            prev_value = channel_values[channel_name][-1] if channel_values[channel_name] else 0
+                            channel_values[channel_name].append(prev_value)
+            
+            # Plot each channel
+            for j, (channel_name, values) in enumerate(channel_values.items()):
+                color = color_palette[j % len(color_palette)]
+                ax.plot(positions, values, label=channel_name, color=color, linewidth=2)
+                
+                # Add markers at keyframe positions
+                channel = self.splines[spline_name].channels[channel_name]
+                keyframe_positions = [kf.at for kf in channel.keyframes]
+                keyframe_values = []
+                for pos in keyframe_positions:
+                    # Get the value at this keyframe position
+                    normal_pos = self._normalize_position(pos)
+                    result = self.solve(normal_pos)
+                    if spline_name in result and channel_name in result[spline_name]:
+                        keyframe_values.append(result[spline_name][channel_name])
+                    else:
+                        keyframe_values.append(0)  # Fallback
+                        
+                ax.scatter(keyframe_positions, keyframe_values, color=color, s=60, zorder=5)
+            
+            # Set labels
+            ax.set_xlabel('Position')
+            ax.set_ylabel('Value')
+            
+            # Add grid and legend
+            ax.grid(True, linestyle='--', alpha=0.7, color=grid_color)
+            ax.legend()
+            
+            # Set x-axis to 0-1 range
+            ax.set_xlim(0, 1)
+        
+        # Add solver name as figure title
+        fig.suptitle(f"Solver: {self.name}", fontsize=16)
+        
+        # Adjust layout
+        plt.tight_layout()
+        plt.subplots_adjust(top=0.95)
+        
+        # Save the plot if a save path is provided
+        if save_path:
+            plt.savefig(save_path, dpi=300, bbox_inches='tight')
+            print(f"Plot saved to {save_path}")
+        
+        return fig
+    
+    def save_plot(
+        self,
+        filepath: str,
+        samples: Optional[int] = None,
+        filter_channels: Optional[Dict[str, List[str]]] = None,
+        theme: str = "light"
+    ) -> None:
+        """Save a plot of the solver's splines and channels to a file.
+        
+        Args:
+            filepath: The file path to save the plot to (e.g., 'plot.png')
+            samples: Number of evenly spaced samples to use (defaults to 100)
+            filter_channels: Optional dictionary mapping spline names to lists of channel names to include
+            theme: Plot theme - 'light' or 'dark'
+            
+        Raises:
+            ImportError: If matplotlib is not available
+        """
+        # Get the plot and save it
+        self.get_plot(samples, filter_channels, theme, save_path=filepath)
+    
+    def plot(
+        self, 
+        samples: Optional[int] = None, 
+        filter_channels: Optional[Dict[str, List[str]]] = None, 
+        theme: str = "light",
+        save_path: Optional[str] = None
+    ):
+        """Plot the solver's splines and channels.
+        
+        Args:
+            samples: Number of evenly spaced samples to use (defaults to 100)
+            filter_channels: Optional dictionary mapping spline names to lists of channel names to include
+            theme: Plot theme - 'light' or 'dark'
+            save_path: Optional file path to save the plot (e.g., 'plot.png')
+            
+        Returns:
+            None - displays the plot
+            
+        Raises:
+            ImportError: If matplotlib is not available
+        """
+        try:
+            import matplotlib.pyplot as plt
+        except ImportError:
+            raise ImportError("Plotting requires matplotlib. Install it with: pip install matplotlib")
+            
+        fig = self.get_plot(samples, filter_channels, theme, save_path)
+        plt.show()
+        return None
+        
+    def show(self):
+        """Display the most recently created plot.
+        
+        This is useful in interactive shells to view plots after they've been created.
+        
+        Raises:
+            ImportError: If matplotlib is not available
+        """
+        try:
+            import matplotlib.pyplot as plt
+        except ImportError:
+            raise ImportError("Plotting requires matplotlib. Install it with: pip install matplotlib")
+            
+        plt.show()
     
     def save(self, filepath: str, format: Optional[str] = None) -> None:
         """Save the solver to a file.

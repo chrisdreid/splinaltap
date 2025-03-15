@@ -251,60 +251,53 @@ def visualize_solver(solver: KeyframeSolver, args: argparse.Namespace) -> None:
     Args:
         solver: The solver to visualize
         args: Command-line arguments with visualization options
+        
+    Visualization options can be specified as key=value pairs:
+        - theme=light|dark: Set the plot theme (default: light)
+        - save=/path/to/file.png: Save the plot to a file
+        
+    Example:
+        --visualize theme=dark save=plot.png
     """
-    # Create figure and axis
-    fig, ax = plt.subplots(figsize=(10, 6))
-    
-    # Generate sample points
+    # Determine sample count
+    samples = None
     if args.samples:
         try:
             # Try to parse as integer sample count
-            sample_count = int(args.samples[0])
-            
-            # Generate evenly spaced sample points
-            sample_points = [i / (sample_count - 1) for i in range(sample_count)]
+            samples = int(args.samples[0])
         except ValueError:
-            # It's a list of specific sample points
-            sample_points = [float(s.split('@')[0]) if '@' in s else float(s) for s in args.samples]
+            # It's a list of specific sample points, use default
+            samples = 100
     else:
         # Default to 100 sample points
-        sample_count = 100
-        sample_points = [i / (sample_count - 1) for i in range(sample_count)]
+        samples = 100
     
-    # Iterate through all splines
-    for spline_name, spline in solver.splines.items():
-        # Iterate through all channels in the spline
-        for channel_name, channel in spline.channels.items():
-            # Generate label
-            label = f"{spline_name}.{channel_name}"
-            
-            # Sample and plot values
-            values = []
-            for at in sample_points:
-                values.append(channel.get_value(at))
-            
-            # Plot the values
-            ax.plot(sample_points, values, marker='o', markersize=3, label=label)
-            
-            # Also plot the keyframe points
-            keyframe_points = channel.get_keyframe_values()
-            x_kf = [kf[0] for kf in keyframe_points]
-            y_kf = [kf[1] for kf in keyframe_points]
-            ax.scatter(x_kf, y_kf, color='red', s=50, zorder=5)
+    # Set defaults
+    theme = "light"
+    save_path = None
     
-    # Set up the plot
-    ax.set_xlabel('Time (@)')
-    ax.set_ylabel('Value')
-    ax.set_title('SplinalTap Interpolation')
-    ax.grid(True)
-    ax.legend()
+    # Parse visualization options if provided
+    if hasattr(args, 'visualize') and args.visualize:
+        for option in args.visualize:
+            if '=' in option:
+                key, value = option.split('=', 1)
+                if key == 'theme':
+                    if value in ['light', 'dark']:
+                        theme = value
+                elif key == 'save':
+                    save_path = value
     
-    # Save or display the plot
-    if args.output_file:
-        plt.savefig(args.output_file, dpi=300, bbox_inches='tight')
-        print(f"Visualization saved to {args.output_file}")
-    else:
-        plt.show()
+    # If output_file is set, use that for backward compatibility
+    if args.output_file and not save_path:
+        save_path = args.output_file
+    
+    # Use the solver.plot method
+    solver.plot(
+        samples=samples,
+        filter_channels=None,  # Simple CLI doesn't support filtering
+        theme=theme,
+        save_path=save_path
+    )
 
 
 def sample_solver(solver: KeyframeSolver, args: argparse.Namespace) -> Dict[str, Any]:
@@ -1308,7 +1301,8 @@ def main():
     parser = create_parser()
     
     # Commands
-    parser.add_argument('--visualize', action='store_true', help="Visualize the interpolation")
+    parser.add_argument('--visualize', nargs='*', default=[], 
+                       help="Visualize the interpolation. Options can be specified as 'key=value', e.g., 'theme=dark' 'save=/path/to/file.png'")
     parser.add_argument('--scene', type=str, help="Scene command (info/ls/convert/extract/generate) with args")
     parser.add_argument('--backend', type=str, help="Backend to use or backend command")
     
@@ -1339,7 +1333,7 @@ def main():
     solver = create_solver_from_args(args)
     
     # Handle visualize command
-    if args.visualize:
+    if hasattr(args, 'visualize') and (args.visualize == True or len(args.visualize) > 0):
         visualize_solver(solver, args)
         return
     
