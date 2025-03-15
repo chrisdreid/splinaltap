@@ -1423,44 +1423,6 @@ class KeyframeSolver:
                                             control_points=control_points,
                                             derivative=derivative
                                         )
-                    # Create a new channel
-                    interpolation = channel_data.get("interpolation", "cubic")
-                    min_max = channel_data.get("min_max")
-                    
-                    # Convert list min_max to tuple (needed for test assertions)
-                    if isinstance(min_max, list) and len(min_max) == 2:
-                        min_max = tuple(min_max)
-                    
-                    channel = spline.add_channel(
-                        name=channel_name,
-                        interpolation=interpolation,
-                        min_max=min_max
-                    )
-                    
-                    # Add keyframes
-                    for keyframe_data in channel_data.get("keyframes", []):
-                        # Support both old "position" key and new "@" key
-                        position = keyframe_data.get("@", keyframe_data.get("position", 0))
-                        value = keyframe_data.get("value", 0)
-                        interp = keyframe_data.get("interpolation")
-                        params = keyframe_data.get("parameters", {})
-                        
-                        control_points = None
-                        derivative = None
-                        
-                        if params:
-                            if "cp" in params:
-                                control_points = params["cp"]
-                            if "deriv" in params:
-                                derivative = params["deriv"]
-                        
-                        channel.add_keyframe(
-                            at=position,
-                            value=value,
-                            interpolation=interp,
-                            control_points=control_points,
-                            derivative=derivative
-                        )
         
         return solver
         

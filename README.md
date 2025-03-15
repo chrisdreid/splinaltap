@@ -2,6 +2,8 @@
 
 *Keyframe interpolation and expression evaluation that goes to eleven!*
 
+![Goes To Eleven](./unittest/output/goes-to-eleven.svg)
+
 ## Introduction
 
 SplinalTap is a Python library for advanced interpolation and curve generation with a focus on scientific and mathematical applications. It provides a flexible architecture for defining, manipulating, and evaluating interpolated values using various mathematical methods.
@@ -78,9 +80,11 @@ result = solver.solve(0.5)                       # Get all channel values at pos
 solver.plot()                                    # Display plot with all channels
 solver.plot(theme="dark")                        # Use dark theme
 solver.save_plot("output.png")                   # Save plot to file without displaying
-solver.get_plot()                                # Get figure for customization
-solver.show()                                    # Show most recently created plot
+solver_plot = solver.get_plot()                                # Get figure for customization
+solver_plot.show()                                    # Show most recently created plot
 ```
+![example-above](./unittest/output/basic-usage-01.svg)
+
 
 ## Advanced Usage
 
@@ -150,6 +154,9 @@ print(f"Position rescaled: {result['position']['rescaled']}")  # 15.0
 print(f"Scaled factor: {result['scale']['factor']}")  # 2.5
 print(f"Position value: {result['position']}")  # {'x': 5.0, 'y': 10.0, 'rescaled': 15.0}
 ```
+
+![example-above](./unittest/output/cross-chan-cross-spline-01.svg)
+
 
 ### Classic Usage Example
 
@@ -444,10 +451,13 @@ channel.add_keyframe(at=0.95, value="randint([1, 10])")   # Random integer betwe
 spline.plot(samples=100, title="Cubic Spline Interpolation")
 
 # Save a plot to a file
-spline.save_plot("spline_plot.png", samples=100, title="Cubic Spline Interpolation")
+spline.save_plot("spline_plot.svg", samples=100, title="Cubic Spline Interpolation")
 
 # Get a plot for customization
 fig = spline.get_plot(samples=100, title="Cubic Spline Interpolation")
+
+# Example of a beautiful interpolation visualization:
+![Beautiful Single Spline Example](./unittest/output/beautiful_spline.svg)
 
 # Option 2: Manual plotting with matplotlib
 try:
@@ -638,64 +648,88 @@ SplinalTap supports two main JSON file formats: single-dimension interpolators a
 }
 ```
 
-#### Advanced Example Solver (solver-advanced.json)
+#### Example Solver File (parameter_solver.json)
 
 ```json
 {
   "version": "2.0",
-  "name": "MySolver",
+  "name": "3D Vector Field",
+  "metadata": {},
   "range": [0.0, 1.0],
-  "metadata": {
-    "description": "Simple animation curve",
-    "author": "user@splinaltap.com"
-  },
   "variables": {
-    "amplitude": 2.5,
-    "frequency": 0.5,
+    "amplitude": 10,
+    "frequency": 2,
     "pi": 3.14159
   },
-  "publish": {
-    "position.x": ["rotation.y"],
-    "rotation.z": ["position"]
-  },
   "splines": {
-    "position": {
-      "x": {
-        "interpolation_method": "cubic",
-        "min-max": [0, 10],
-        "keyframes": [
-          { "@": 0.0, "value": 0 },
-          { "@": 0.5, "value": "sin(t*frequency)*amplitude", "interpolation_method": "hermite", "parameters": { "deriv": 0.5 } },
-          { "@": 0.75, "value": 5, "interpolation_method": "bezier", "parameters": { "cp": [0.6, 12, 0.7, 8] } },
-          { "@": 1.0, "value": 10 }
-        ]
+    "coordinates": {
+      "channels": {
+        "x": {
+          "interpolation": "linear",
+          "keyframes": [
+            {
+              "@": 0.0,
+              "value": "0"
+            },
+            {
+              "@": 1.0,
+              "value": "0"
+            }
+          ]
+        },
+        "y": {
+          "interpolation": "cubic",
+          "keyframes": [
+            {
+              "@": 0.0,
+              "value": "0"
+            },
+            {
+              "@": 0.5,
+              "value": "0"
+            },
+            {
+              "@": 1.0,
+              "value": "0"
+            }
+          ]
+        },
+        "z": {
+          "interpolation": "bezier",
+          "keyframes": [
+            {
+              "@": 0.0,
+              "value": "0",
+              "parameters": {
+                "cp": [0.1, 2, 0.3, 5]
+              }
+            },
+            {
+              "@": 1.0,
+              "value": "0",
+              "parameters": {
+                "cp": [0.7, 5, 0.9, 2]
+              }
+            }
+          ]
+        }
       }
     },
-    "rotation": {
-      "x": {
-        "interpolation_method": "linear",
-        "min-max": [0, 10],
-        "keyframes": [
-          { "@": 0.0, "value": 0 },
-          { "@": 1.0, "value": 10 }
-        ]
-      },
-      "y": {
-        "interpolation_method": "linear",
-        "min-max": [0, 10],
-        "keyframes": [
-          { "@": 0.0, "value": 0 },
-          { "@": 1.0, "value": 10 }
-        ]
-      },
-      "z": {
-        "publish": ["*"],
-        "interpolation_method": "linear",
-        "min-max": [0, 10],
-        "keyframes": [
-          { "@": 0.0, "value": 0 },
-          { "@": 1.0, "value": 10 }
-        ]
+    "phase": {
+      "channels": {
+        "angle": {
+          "interpolation": "cubic",
+          "keyframes": [
+            {
+              "@": 0.0,
+              "value": "0"
+            },
+            {
+              "@": 1.0,
+              "value": "0"
+            }
+          ]
+        }
       }
     }
   }
@@ -1109,17 +1143,17 @@ Available visualization options:
 - `overlay=true|false`: If true (default), all channels are plotted in a single graph; if false, each spline gets its own subplot
 
 **Visual themes:**
-![Visual Themes](/unittest/theme_dark.png)
+![Visual Themes](./unittest/output/theme_dark.svg)
 *Dark theme (default)*
 
-![Medium Theme](/unittest/theme_medium.png)
+![Medium Theme](./unittest/output/theme_medium.svg)
 *Medium theme*
 
-![Light Theme](/unittest/theme_light.png)
+![Light Theme](./unittest/output/theme_light.svg)
 *Light theme*
 
 **Overlay vs. Separate:**
-![Overlay=false](/unittest/separate_splines.png)
+![Overlay=false](./unittest/output/separate_splines.svg)
 *Separate splines (overlay=false)*
 
 **Complex Visualization Example:**
@@ -1458,3 +1492,26 @@ Contributions are welcome! Please feel free to submit a Pull Request.
 ## License
 
 This project is licensed under the MIT License - see the LICENSE file for details.
+
+
+## Running Tests
+
+Run the tests from the directory containing the splinaltap package:
+
+```bash
+# Run all tests
+python -m splinaltap.unittest.test_runner
+
+# Run tests with verbose output
+python -m splinaltap.unittest.test_runner -v
+
+# Run specific test category
+python -m splinaltap.unittest.test_runner --pattern test_api_file_io
+
+# Run specific test type
+python -m splinaltap.unittest.test_runner --test-type api
+```
+
+Note: JAX tests may fail on some systems. You can pass `--skip-jax` to the test runner to skip them.
+
+![Beautiful Spline](./unittest/output/beautiful_spline.svg)

@@ -1,0 +1,48 @@
+{
+  "version": "2.0",
+  "name": "MySolver",
+  "range": [0.0, 1.0],
+  "metadata": {
+    "description": "Simple animation curve",
+    "author": "SplinalTap"
+  },
+  "variables": {
+    "amplitude": 2.5,
+    "frequency": 0.5,
+    "pi": 3.14159
+  },
+  "splines": {
+    "position": {
+      "x": {
+        "interpolation_method": "cubic",
+        "min-max": [0, 10],
+        "keyframes": [
+          {
+            "@": 0.0,
+            "value": 0
+          },
+          {
+            "@": 0.5,
+            "value": "sin(t*frequency)*amplitude",
+            "interpolation_method": "hermite",
+            "parameters": {
+              "deriv": 0.5
+            }
+          },
+          {
+            "@": 0.75,
+            "value": 5,
+            "interpolation_method": "bezier",
+            "parameters": {
+              "cp": [0.6, 12, 0.7, 8]
+            }
+          },
+          {
+            "@": 1.0,
+            "value": 10
+          }
+        ]
+      }
+    }
+  }
+}
