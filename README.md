@@ -1114,17 +1114,17 @@ Available visualization options:
 - `overlay=true|false`: If true (default), all channels are plotted in a single graph; if false, each spline gets its own subplot
 
 **Visual themes:**
-![Visual Themes](/unittest/theme_dark.png)
+![Visual Themes](./unittest/output/theme_dark.png)
 *Dark theme (default)*
 
-![Medium Theme](/unittest/theme_medium.png)
+![Medium Theme](./unittest/output/theme_medium.png)
 *Medium theme*
 
-![Light Theme](/unittest/theme_light.png)
+![Light Theme](./unittest/output/theme_light.png)
 *Light theme*
 
 **Overlay vs. Separate:**
-![Overlay=false](/unittest/separate_splines.png)
+![Overlay=false](./unittest/output/separate_splines.png)
 *Separate splines (overlay=false)*
 
 **Complex Visualization Example:**
@@ -1463,3 +1463,44 @@ Contributions are welcome! Please feel free to submit a Pull Request.
 ## License
 
 This project is licensed under the MIT License - see the LICENSE file for details.
+
+## Project Structure
+
+SplinalTap follows a clean organization pattern:
+
+```
+./                           # Root directory
+├── splinaltap/              # Main source code
+│   ├── *.py                 # Python modules
+│   ├── LICENSE              # License file
+│   ├── README.md            # Documentation
+│   └── unittest/            # Unit test code
+│       └── test_*.py        # Test files
+│
+├── tests/                   # Test data (input/output)
+│   ├── input/               # Test input files
+│   └── output/              # Test output files
+│
+├── run_tests.py             # Test runner script
+└── CLAUDE.md                # Project guidelines
+```
+
+## Running Tests
+
+Use the test runner script from the project root:
+
+```bash
+# Run all tests
+python run_tests.py
+
+# Run tests with verbose output
+python run_tests.py -v
+
+# Skip JAX tests (recommended for development)
+python run_tests.py --skip-jax
+
+# Run specific test category
+python run_tests.py api_file_io
+```
+
+Note: JAX tests may fail on some systems. You can safely skip them with `--skip-jax` flag.

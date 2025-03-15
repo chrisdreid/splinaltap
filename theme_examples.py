@@ -85,7 +85,7 @@ def create_complex_solver(name="ComplexExample"):
     
     return solver
 
-def generate_theme_examples(output_dir="/home/chris/dev/venv/v-splinaltap/unittest"):
+def generate_theme_examples(output_dir=None):
     """Generate example plots with different themes and save to files.
     
     Args:
@@ -94,6 +94,12 @@ def generate_theme_examples(output_dir="/home/chris/dev/venv/v-splinaltap/unitte
     Returns:
         Paths to the generated images
     """
+    # Use tests/output directory by default
+    if output_dir is None:
+        output_dir = os.path.join(
+            os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+            'tests', 'output'
+        )
     if not os.path.exists(output_dir):
         os.makedirs(output_dir)
         

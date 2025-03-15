@@ -16,10 +16,10 @@ class TestFileIO(unittest.TestCase):
         # Reset backend to default for consistent testing
         BackendManager.set_backend("python")
         
-        # Get the path to the test input file
+        # Get the path to the test input file in the tests/input directory
         self.input_file = os.path.join(
-            os.path.dirname(os.path.abspath(__file__)),
-            'input.json'
+            os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
+            'tests', 'input', 'input.json'
         )
         
         # Create a temporary directory for output files
@@ -100,8 +100,13 @@ class TestFileIO(unittest.TestCase):
         channel.add_keyframe(at=0.0, value=0.0)
         channel.add_keyframe(at=1.0, value=10.0)
         
-        # Create a temporary output file
-        output_file = os.path.join(self.temp_dir.name, 'output_save_reload.json')
+        # Create an output file in the tests/output directory
+        output_dir = os.path.join(
+            os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
+            'tests', 'output'
+        )
+        os.makedirs(output_dir, exist_ok=True)
+        output_file = os.path.join(output_dir, 'output_save_reload.json')
         
         # Save the solver to the output file
         original_solver.save(output_file)

@@ -32,8 +32,11 @@ class TestThemes(unittest.TestCase):
         """Set up a complex solver for testing."""
         self.solver = create_complex_solver()
         
-        # Create test output directory if it doesn't exist
-        self.output_dir = os.path.join(os.path.dirname(__file__), "test_output")
+        # Create test output directory in tests/output
+        self.output_dir = os.path.join(
+            os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
+            'tests', 'output'
+        )
         if not os.path.exists(self.output_dir):
             os.makedirs(self.output_dir)
         
