@@ -130,6 +130,12 @@ class ExpressionEvaluator:
         Raises:
             ValueError: If the AST contains unsafe operations
         """
+        # First, pre-process the AST to find all qualified names
+        qualified_names = set()
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Attribute) and isinstance(node.value, ast.Name):
+                qualified_names.add(node.value.id)
+        
         class SafetyValidator(ast.NodeVisitor):
             def __init__(self, parent):
                 self.parent = parent
@@ -155,44 +161,67 @@ class ExpressionEvaluator:
                 self.allowed_var_names = {'t', 'x', 'y', 'z', 'a', 'b', 'c', 'd', '@',
                                          'amplitude', 'frequency', 'scale', 'offset', 'speed',
                                          'factor', 'position', 'rotation', 'scale', 'value'}
+                
+                # Names that require qualification when referring to channels
+                self.channel_names = {'x', 'y', 'z', 'position', 'rotation', 'scale'}
             
             def generic_visit(self, node):
                 if type(node) not in self.allowed_nodes:
                     raise ValueError(f"Unsafe operation: {type(node).__name__}")
                 super().generic_visit(node)
-            
-            def visit_Name(self, node):
-                if node.id in self.parent.variables:
-                    self.used_vars.add(node.id)
-                elif node.id in self.parent.safe_funcs or node.id in self.parent.safe_constants:
-                    # Functions and constants are fine
-                    pass
-                elif node.id in self.allowed_var_names:
-                    # Common variable names are allowed
-                    pass
-                else:
-                    # For expressions that reference other channels, we'll defer validation
-                    # to runtime when the channel values are actually evaluated.
-                    # This allows for 'factor' to be used in 'x * factor', for example,
-                    # as long as 'factor' is published when the expression is evaluated.
-                    self.used_vars.add(node.id)
-                super().generic_visit(node)
                 
             def visit_Attribute(self, node):
-                # Handle attribute access like position.x
-                # This is necessary for fully qualified channel references
+                # Process attribute access (like position.x)
                 if isinstance(node.value, ast.Name):
-                    # Get the full reference as a string (e.g., "position.x")
+                    # Get the fully qualified name
                     full_name = f"{node.value.id}.{node.attr}"
-                    # Add it to used_vars so we know it's a dependency
+                    # Add it to used_vars for dependency tracking
                     self.used_vars.add(full_name)
-                super().generic_visit(node)
+                
+                # Continue with normal validation
+                self.generic_visit(node)
+            
+            def visit_Name(self, node):
+                # Skip validation for names that are part of qualified references (e.g., 'position' in 'position.x')
+                if node.id in qualified_names:
+                    return
+                
+                # Special cases for allowed unqualified names
+                if node.id in self.parent.variables:
+                    # Solver-level variables are allowed
+                    self.used_vars.add(node.id)
+                elif node.id in self.parent.safe_funcs or node.id in self.parent.safe_constants:
+                    # Math functions and constants are fine
+                    pass
+                elif node.id == 't':
+                    # The built-in time variable is always allowed
+                    pass
+                elif node.id in self.channel_names:
+                    # Common channel/spline names must be fully qualified
+                    raise ValueError(
+                        f"Unqualified channel reference '{node.id}' is not allowed. "
+                        f"Use a fully qualified name in the format 'spline.channel'."
+                    )
+                elif node.id in self.allowed_var_names:
+                    # Other allowed variable names for calculations
+                    pass
+                else:
+                    # Any other unqualified names are not allowed
+                    raise ValueError(
+                        f"Unqualified reference '{node.id}' is not allowed. "
+                        f"Channel references must use fully qualified names in the format 'spline.channel'."
+                    )
+                
+                # Continue with normal validation
+                self.generic_visit(node)
             
             def visit_Call(self, node):
+                # Validate function calls
                 if not isinstance(node.func, ast.Name) or node.func.id not in self.parent.safe_funcs:
                     raise ValueError(f"Unsafe function call: {node.func}")
-                super().generic_visit(node)
+                self.generic_visit(node)
         
+        # Create and run the validator with our pre-collected qualified names
         validator = SafetyValidator(self)
         validator.visit(tree)
     
@@ -241,30 +270,47 @@ class ExpressionEvaluator:
                     return lambda ctx: var_func(ctx.get('t', 0), ctx)
                 else:
                     return lambda ctx: var_func
+            elif name == 't':
+                # Special case for time variable
+                return lambda ctx: ctx.get('t', 0)
             else:
-                # For t and channel variables
-                def dynamic_ctx_lookup(ctx):
-                    # First, try to get the value directly from the context (this handles fully qualified names)
-                    value = ctx.get(name, None)
+                # For channel variables, only references within a fully qualified name should reach here
+                # (the unqualified ones should be caught by visit_Name in SafetyValidator)
+                def validate_fully_qualified(ctx):
+                    # Special case for built-in math names (which are provided in the context)
+                    if name in ('sin', 'cos', 'tan', 'sqrt', 'exp', 'log'):
+                        return ctx.get(name, 0)
                     
-                    # If the value wasn't found and there's a channel lookup function, try using it
-                    if value is None and '__channel_lookup__' in ctx:
+                    # Check if a channel_lookup function is provided to handle qualified names
+                    if '__channel_lookup__' in ctx:
                         channel_lookup = ctx['__channel_lookup__']
                         try:
-                            # Use the channel lookup function with the current time
+                            # If this isn't part of an attribute access, it's an unqualified name
+                            # Let the channel_lookup function handle the error
                             value = channel_lookup(name, ctx.get('t', 0))
-                        except Exception:
-                            # If lookup fails, default to 0
-                            value = 0
-                    elif value is None:
-                        # Default to 0 if variable is not found
-                        value = 0
+                            
+                            # Convert NumPy arrays to Python scalar values
+                            if hasattr(value, 'item') and hasattr(value, 'size') and value.size == 1:
+                                return value.item()
+                            return value
+                        except Exception as e:
+                            # Propagate the error
+                            raise ValueError(f"Error accessing channel '{name}': {str(e)}")
                     
-                    # Convert NumPy arrays to Python scalar values
-                    if hasattr(value, 'item') and hasattr(value, 'size') and value.size == 1:
-                        return value.item()
-                    return value
-                return dynamic_ctx_lookup
+                    # If no channel_lookup, but the name is in the context, allow it (for solver variables)
+                    if name in ctx:
+                        value = ctx[name]
+                        # Convert NumPy arrays to Python scalar values
+                        if hasattr(value, 'item') and hasattr(value, 'size') and value.size == 1:
+                            return value.item()
+                        return value
+                    
+                    # Default case - shouldn't reach here if validation is working
+                    raise ValueError(
+                        f"Unqualified reference '{name}' is not allowed. "
+                        f"Channel references must use fully qualified names in the format 'spline.channel'."
+                    )
+                return validate_fully_qualified
                 
         def visit_Attribute(self, node):
             # Handle attribute access like position.x
@@ -412,8 +458,21 @@ class DependencyExtractor(ast.NodeVisitor):
         self.safe_constants = safe_constants
         self.known_variables = known_variables
         self.references: Set[str] = set()
+        
+        # Collect qualified names during the first pass
+        self.qualified_names = set()
+        
+    def pre_process(self, tree):
+        """First pass to collect names that are part of attribute access."""
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Attribute) and isinstance(node.value, ast.Name):
+                self.qualified_names.add(node.value.id)
 
     def visit_Name(self, node: ast.Name):
+        # Skip names that are part of qualified references
+        if node.id in self.qualified_names:
+            return
+            
         # If not in safe funcs/constants, record as potential dependency
         if (
             node.id not in self.safe_funcs
@@ -421,8 +480,9 @@ class DependencyExtractor(ast.NodeVisitor):
             and node.id not in self.known_variables
             and node.id != 't'  # or other built-in placeholders
         ):
-            # Add the name as a potential dependency
-            self.references.add(node.id)
+            # Unqualified names should not be added as dependencies
+            # The validation step should catch these before we get here
+            pass
         self.generic_visit(node)
         
     def visit_Attribute(self, node: ast.Attribute):
@@ -430,7 +490,7 @@ class DependencyExtractor(ast.NodeVisitor):
         if isinstance(node.value, ast.Name):
             # Construct the full name (spline.channel)
             full_name = f"{node.value.id}.{node.attr}"
-            # Add as a dependency
+            # Add as a dependency - this is the only valid way to reference channels
             self.references.add(full_name)
         self.generic_visit(node)
 
@@ -461,6 +521,39 @@ def extract_expression_dependencies(expr_str: str,
     except SyntaxError:
         return set()  # Return empty if it doesn't parse
 
+    # First, validate that all channel references are fully qualified
+    class FullyQualifiedValidator(ast.NodeVisitor):
+        def __init__(self, safe_funcs, safe_constants, known_variables):
+            self.safe_funcs = safe_funcs
+            self.safe_constants = safe_constants
+            self.known_variables = known_variables
+            self.common_channel_names = {'x', 'y', 'z', 'position', 'rotation', 'scale'}
+        
+        def visit_Name(self, node):
+            # Unqualified variable names that might be channels should be rejected
+            if (node.id not in self.safe_funcs and 
+                node.id not in self.safe_constants and 
+                node.id not in self.known_variables and
+                node.id != 't' and  # Allow time variable
+                node.id in self.common_channel_names):
+                raise ValueError(
+                    f"Unqualified channel reference '{node.id}' is not allowed. "
+                    f"Use a fully qualified name in the format 'spline.channel'."
+                )
+            self.generic_visit(node)
+    
+    # Validate fully qualified references
+    validator = FullyQualifiedValidator(safe_funcs, safe_constants, known_variables)
+    try:
+        validator.visit(tree)
+    except ValueError as e:
+        # Re-raise the validation error
+        raise ValueError(str(e))
+    
+    # Extract dependencies
     extractor = DependencyExtractor(safe_funcs, safe_constants, known_variables)
+    # First pass: collect qualified names
+    extractor.pre_process(tree)
+    # Second pass: extract dependencies
     extractor.visit(tree.body)
     return extractor.references

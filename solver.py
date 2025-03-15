@@ -320,10 +320,82 @@ class KeyframeSolver:
         # Create a channel lookup function for expression evaluation
         def channel_lookup(sub_chan_name, sub_t):
             """Helper function that uses _evaluate_channel_at_time to get dependencies at sub_t."""
-            # sub_chan_name might be 'otherSpline.otherChan' or just 'otherChan' for same spline
+            # Always require fully qualified names for cross-channel references
+            # Special cases: built-in variables and solver-level variables
+            if sub_chan_name == 't':
+                return sub_t
+            elif sub_chan_name in self.variables:
+                # Allow access to solver-level variables without qualification
+                return self.variables[sub_chan_name]
+                
             if '.' not in sub_chan_name:
-                # same spline - this is a local channel reference
-                sub_node_key = f"{spline_name}.{sub_chan_name}"
+                # This is an unqualified name (e.g., "x"), which is no longer allowed
+                # First, try to find if any channels with this name are published to this target
+                matching_published_channels = []
+                
+                # Check solver-level publish directives
+                for source, targets in self.publish.items():
+                    source_spline, source_channel = source.split('.', 1)
+                    if source_channel == sub_chan_name:
+                        channel_path = f"{spline_name}.{channel_name}"
+                        can_access = (
+                            "*" in targets or
+                            channel_path in targets or
+                            any(target.endswith(".*") and channel_path.startswith(target[:-1]) for target in targets)
+                        )
+                        if can_access:
+                            matching_published_channels.append(source)
+                
+                # Check channel-level publish directives
+                for other_spline_name, other_spline in self.splines.items():
+                    for other_channel_name, other_channel in other_spline.channels.items():
+                        if other_channel_name != sub_chan_name:
+                            continue
+                        
+                        if not hasattr(other_channel, 'publish') or not other_channel.publish:
+                            continue
+                        
+                        target_path = f"{spline_name}.{channel_name}"
+                        can_access = (
+                            "*" in other_channel.publish or
+                            target_path in other_channel.publish or
+                            any(pattern.endswith(".*") and target_path.startswith(pattern[:-1]) 
+                                for pattern in other_channel.publish)
+                        )
+                        
+                        if can_access:
+                            matching_published_channels.append(f"{other_spline_name}.{other_channel_name}")
+                
+                # Check if a local channel with this name exists in this spline
+                local_channel_exists = (
+                    spline_name in self.splines and 
+                    sub_chan_name in self.splines[spline_name].channels
+                )
+                
+                # Provide a helpful error message based on what's available
+                if local_channel_exists:
+                    # Suggest the local channel
+                    suggestions = [f"{spline_name}.{sub_chan_name}"]
+                    if matching_published_channels:
+                        suggestions.extend(matching_published_channels)
+                    
+                    raise ValueError(
+                        f"Unqualified channel reference '{sub_chan_name}' is not allowed. "
+                        f"Use a fully qualified name such as: {', '.join(suggestions)}"
+                    )
+                elif matching_published_channels:
+                    # Suggest the published channels
+                    channels_str = ", ".join(matching_published_channels)
+                    raise ValueError(
+                        f"Unqualified channel reference '{sub_chan_name}' is not allowed. "
+                        f"Use a fully qualified name such as: {channels_str}"
+                    )
+                else:
+                    # No matching channels found
+                    raise ValueError(
+                        f"Unqualified channel reference '{sub_chan_name}' is not allowed. "
+                        f"Use a fully qualified name in the format 'spline.channel'."
+                    )
             else:
                 # This is a fully qualified reference (e.g., "position.x")
                 sub_node_key = sub_chan_name
