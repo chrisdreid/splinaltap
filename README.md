@@ -113,13 +113,17 @@ angle.add_keyframe(at=1.0, value=90.0)
 solver.set_publish("position.x", ["rotation.derived"])
 
 # Create a derived channel that uses the published value
-derived.add_keyframe(at=0.0, value="x * 2")  # Uses position.x
-derived.add_keyframe(at=1.0, value="x * 2")  # Uses position.x
+# NOTE: Channel references require fully qualified names
+derived.add_keyframe(at=0.0, value="position.x * 2")  # Uses position.x
+derived.add_keyframe(at=1.0, value="position.x * 3")  # Uses position.x
+
+# Unqualified references will raise an error:
+# derived.add_keyframe(at=0.0, value="x * 2")  # ERROR: Unqualified channel reference not allowed
 
 # Evaluate at t=0.5
 result = solver.solve(0.5)
 print(f"Position x at t=0.5: {result['position']['x']}")  # 5.0
-print(f"Derived value at t=0.5: {result['rotation']['derived']}")  # 10.0
+print(f"Derived value at t=0.5: {result['rotation']['derived']}")  # 15.0
 
 # Using channel-level publishing
 scale = solver.create_spline("scale")
@@ -128,15 +132,16 @@ factor.add_keyframe(at=0.0, value=2.0)
 factor.add_keyframe(at=1.0, value=3.0)
 
 # Create a channel that uses the globally published scale
-scaled = position.add_channel("scaled")
-scaled.add_keyframe(at=0.0, value="x * factor")
-scaled.add_keyframe(at=1.0, value="x * factor")
+rescaled = position.add_channel("rescaled")
+rescaled.add_keyframe(at=0.0, value="position.x * scale.factor")  # Must use fully qualified channel name
+rescaled.add_keyframe(at=1.0, value="position.x * scale.factor")  # Must use fully qualified channel name
 
 # Evaluate again
 result = solver.solve(0.5)
 print(f"Position x: {result['position']['x']}")  # 5.0
-print(f"Scale factor: {result['scale']['factor']}")  # 2.5
-print(f"Scaled value: {result['position']['scaled']}")  # 12.5
+print(f"Position rescaled: {result['position']['rescaled']}")  # 15.0
+print(f"Scaled factor: {result['scale']['factor']}")  # 2.5
+print(f"Position value: {result['position']}")  # {'x': 5.0, 'y': 10.0, 'rescaled': 15.0}
 ```
 
 ### Classic Usage Example
@@ -780,10 +785,31 @@ Without any "publish", a channel's value is private (closed by default).
 
 Syntax: Strings in "value" (e.g., "sin(t*frequency)*amplitude") can use:
 - Variables from "variables" (e.g., "amplitude", "pi").
-- Published channels (e.g., "position.x") if access is granted via "publish".
+- Published channels using **fully qualified names** (e.g., "position.x") if access is granted via "publish".
 - "t": The current time/position (matches "@").
 
 Example: "rotation.z * 2 + sin(t*pi)" combines a published channel and a variable.
+
+> **IMPORTANT**: Channel references in expressions **must** use fully qualified names in the format `spline.channel`. 
+> Unqualified references like just `x` are not allowed and will cause a ValueError to be raised.
+> This requirement ensures clarity and prevents ambiguity when multiple channels have the same name.
+> 
+> Allowed:
+> ```python
+> value="position.x * 2"  # Explicitly uses position.x
+> value="rotation.angle + scale.factor"  # Multiple fully qualified references
+> ```
+> 
+> Not allowed:
+> ```python
+> value="x * 2"  # ERROR: Unqualified reference to 'x'
+> value="angle + factor"  # ERROR: Unqualified references
+> ```
+> 
+> The only exceptions to this rule are:
+> - The built-in time variable `t`
+> - Constants defined with `solver.set_variable()`
+> - Mathematical constants and functions
 
 #### Example
 
@@ -1147,7 +1173,7 @@ python splinaltap --scene "extract scene.json coordinates.json coordinates"
 
 SplinalTap includes a powerful topological solver that optimizes the evaluation of channel expressions that reference other channels. It works by:
 
-1. Analyzing dependencies between channels
+1. Analyzing dependencies between channels (using fully qualified names)
 2. Building a dependency graph
 3. Sorting channels in topological order (dependency-first order)
 4. Using caching to avoid redundant calculations
@@ -1159,6 +1185,7 @@ The topological solver (default) offers several advantages over the on-demand so
 - **Optimal Ordering**: Ensures dependencies are calculated before dependent channels
 - **Cache Optimization**: Avoids redundant calculations for repeated references
 - **Cycle Detection**: Identifies and reports dependency cycles
+- **Clear Dependencies**: Requires fully qualified names for all channel references, making dependencies explicit and preventing ambiguity
 
 You can select the solver method when evaluating:
 

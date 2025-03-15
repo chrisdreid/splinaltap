@@ -277,6 +277,14 @@ class ExpressionEvaluator:
                 # For channel variables, only references within a fully qualified name should reach here
                 # (the unqualified ones should be caught by visit_Name in SafetyValidator)
                 def validate_fully_qualified(ctx):
+                    # First check if it's a solver variable
+                    if name in ctx:
+                        value = ctx[name]
+                        # Convert NumPy arrays to Python scalar values
+                        if hasattr(value, 'item') and hasattr(value, 'size') and value.size == 1:
+                            return value.item()
+                        return value
+                    
                     # Special case for built-in math names (which are provided in the context)
                     if name in ('sin', 'cos', 'tan', 'sqrt', 'exp', 'log'):
                         return ctx.get(name, 0)
@@ -296,14 +304,6 @@ class ExpressionEvaluator:
                         except Exception as e:
                             # Propagate the error
                             raise ValueError(f"Error accessing channel '{name}': {str(e)}")
-                    
-                    # If no channel_lookup, but the name is in the context, allow it (for solver variables)
-                    if name in ctx:
-                        value = ctx[name]
-                        # Convert NumPy arrays to Python scalar values
-                        if hasattr(value, 'item') and hasattr(value, 'size') and value.size == 1:
-                            return value.item()
-                        return value
                     
                     # Default case - shouldn't reach here if validation is working
                     raise ValueError(

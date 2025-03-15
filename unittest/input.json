@@ -89,8 +89,8 @@
           "name": "dependent",
           "interpolation": "linear",
           "keyframes": [
-            { "@": 0.0, "value": "x + y" },
-            { "@": 1.0, "value": "x * 2" }
+            { "@": 0.0, "value": "position.x + position.y" },
+            { "@": 1.0, "value": "position.x * 2" }
           ]
         }
       ]

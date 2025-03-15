@@ -465,13 +465,20 @@ class KeyframeSolver:
             val = self._evaluate_channel_at_time(node, normalized_t, external_channels)
             result_by_node[node] = val
 
-        # Convert to {spline: {channel: value}} format
+        # Initialize the output with all splines and channels, ensuring every channel is in the result
         out = {}
-        for node_key, val in result_by_node.items():
-            spline_name, chan_name = node_key.split('.', 1)
+        for spline_name, spline in self.splines.items():
             if spline_name not in out:
                 out[spline_name] = {}
-            out[spline_name][chan_name] = val
+            for channel_name in spline.channels:
+                # Create an entry for every channel in every spline
+                node_key = f"{spline_name}.{channel_name}"
+                if node_key in result_by_node:
+                    out[spline_name][channel_name] = result_by_node[node_key]
+                else:
+                    # If the channel wasn't evaluated in the topological sort, evaluate it now
+                    val = self._evaluate_channel_at_time(node_key, normalized_t, external_channels)
+                    out[spline_name][channel_name] = val
 
         return out
 
@@ -493,11 +500,16 @@ class KeyframeSolver:
         # First pass: calculate channel values without expressions that might depend on other channels
         channel_values = {}
         
+        # Initialize result structure with all splines and channels
         for spline_name, spline in self.splines.items():
-            spline_result = {}
+            if spline_name not in result:
+                result[spline_name] = {}
+        
+        # First pass: evaluate channels without expressions
+        for spline_name, spline in self.splines.items():
             for channel_name, channel in spline.channels.items():
                 # For simple numeric keyframes, evaluate them first
-                if all(not isinstance(kf.value, str) and callable(kf.value) for kf in channel.keyframes):
+                if all(not isinstance(kf.value, str) and not hasattr(kf.value, '__splinaltap_expr__') for kf in channel.keyframes):
                     # Combine variables with external channels for non-expression evaluation
                     combined_channels = {}
                     if external_channels:
@@ -506,19 +518,13 @@ class KeyframeSolver:
                     
                     # Evaluate the channel at the normalized position
                     value = channel.get_value(normalized_position, combined_channels)
-                    spline_result[channel_name] = value
+                    result[spline_name][channel_name] = value
                     
                     # Store the channel value for expression evaluation
                     channel_values[f"{spline_name}.{channel_name}"] = value
-                    
-            result[spline_name] = spline_result
         
         # Second pass: evaluate channels with expressions that might depend on other channels
-        for spline_name, spline in self.splines.items():
-            # Ensure spline_result exists for this spline
-            if spline_name not in result:
-                result[spline_name] = {}
-                
+        for spline_name, spline in self.splines.items():                
             for channel_name, channel in spline.channels.items():
                 # Skip channels already evaluated in the first pass
                 if channel_name in result[spline_name]:
@@ -587,6 +593,30 @@ class KeyframeSolver:
                                 accessible_channels[source_path] = channel_values[source_path]
                                 # Also make it accessible by just the channel name
                                 accessible_channels[other_channel_name] = channel_values[source_path]
+                
+                # Set up channel lookup function to handle references to published channels that weren't processed yet
+                def channel_lookup(sub_chan_name, sub_t):
+                    """Helper function to look up channel values."""
+                    if sub_chan_name in accessible_channels:
+                        return accessible_channels[sub_chan_name]
+                    elif sub_chan_name == 't':
+                        return sub_t
+                    elif sub_chan_name in self.variables:
+                        return self.variables[sub_chan_name]
+                    elif '.' in sub_chan_name:
+                        # Handle fully qualified reference
+                        try:
+                            ref_spline_name, ref_channel_name = sub_chan_name.split('.', 1)
+                            ref_channel = self.splines[ref_spline_name].channels[ref_channel_name]
+                            return ref_channel.get_value(normalized_position, accessible_channels)
+                        except (KeyError, ValueError):
+                            return 0
+                    else:
+                        # Unqualified references should have been caught by validation
+                        return 0
+                
+                # Add channel lookup function to accessible channels
+                accessible_channels['__channel_lookup__'] = channel_lookup
                 
                 # Evaluate the channel with the accessible channels
                 value = channel.get_value(normalized_position, accessible_channels)
