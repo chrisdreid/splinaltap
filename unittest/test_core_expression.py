@@ -32,26 +32,26 @@ class TestExpressionEvaluation(unittest.TestCase):
         # Test power notation
         self.assertEqual(self.evaluator.evaluate("2^3", 0), 8)  # ^ should be converted to **
     
-    def test_variables(self):
-        """Test expressions with variables."""
-        # Define variables
-        variables = {
-            "x": 10,
-            "y": 5,
-            "t": 0.5
-        }
+    def test_builtin_variables(self):
+        """Test expressions with built-in variables."""
+        # Create evaluator with built-in variables in constructor
+        evaluator = ExpressionEvaluator({
+            "scale": 2.5,
+            "offset": 10,
+            "pi": 3.14159
+        })
         
-        # Test expressions with variables
-        self.assertEqual(self.evaluator.evaluate("x + y", 0.5, variables), 15)
-        self.assertEqual(self.evaluator.evaluate("x * y", 0.5, variables), 50)
-        self.assertEqual(self.evaluator.evaluate("x / y", 0.5, variables), 2)
-        self.assertEqual(self.evaluator.evaluate("t * 100", 0.5, variables), 50)
+        # Test built-in time variables (t is automatically available)
+        self.assertEqual(evaluator.evaluate("t * 100", 0.5), 50)
+        self.assertEqual(evaluator.evaluate("@ * 100", 0.5), 50)  # @ is an alias for t
         
-        # Test with @ as alias for t
-        self.assertEqual(self.evaluator.evaluate("@ * 100", 0.5, variables), 50)
+        # Test with PI constants
+        self.assertAlmostEqual(evaluator.evaluate("pi * 2", 0.5), 6.28318, delta=0.0001)
         
-        # Test complex expressions
-        self.assertEqual(self.evaluator.evaluate("x + y * t", 0.5, variables), 12.5)
+        # Test with other constructor-defined variables
+        self.assertEqual(evaluator.evaluate("scale * 10", 0.5), 25)
+        self.assertEqual(evaluator.evaluate("offset + 5", 0.5), 15)
+        self.assertEqual(evaluator.evaluate("scale * t * 100", 0.5), 125)
     
     def test_math_functions(self):
         """Test mathematical functions in expressions."""

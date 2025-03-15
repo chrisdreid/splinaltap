@@ -4,7 +4,7 @@
 import unittest
 import math
 
-from splinaltap import KeyframeInterpolator, KeyframeSolver, Spline, Channel
+from splinaltap import KeyframeSolver, Spline, Channel
 from splinaltap.backends import BackendManager
 
 class TestRandomFunctions(unittest.TestCase):
@@ -14,35 +14,35 @@ class TestRandomFunctions(unittest.TestCase):
         """Set up test case environment."""
         # Force Python backend for consistent results
         BackendManager.set_backend("python")
-        self.interpolator = KeyframeInterpolator()
+        self.channel = Channel()  # Use Channel instead of KeyframeInterpolator
 
     def test_rand_float_range(self):
         """Test that rand() returns values in the 0-1 range."""
-        self.interpolator.set_keyframe(at=0.0, value="rand()")
+        self.channel.add_keyframe(at=0.0, value="rand()")
         
         for _ in range(10):
-            value = self.interpolator.get_value(0.0)
+            value = self.channel.get_value(0.0)
             self.assertGreaterEqual(value, 0.0)
             self.assertLess(value, 1.0)
             self.assertIsInstance(value, float)
 
     def test_rand_scaling(self):
         """Test that rand() can be scaled to other ranges."""
-        self.interpolator.set_keyframe(at=0.0, value="rand() * 10")
+        self.channel.add_keyframe(at=0.0, value="rand() * 10")
         
         for _ in range(10):
-            value = self.interpolator.get_value(0.0)
+            value = self.channel.get_value(0.0)
             self.assertGreaterEqual(value, 0.0)
             self.assertLess(value, 10.0)
             self.assertIsInstance(value, float)
 
     def test_randint_single_arg(self):
         """Test randint(max) returns integers between 0 and max."""
-        self.interpolator.set_keyframe(at=0.0, value="randint(5)")
+        self.channel.add_keyframe(at=0.0, value="randint(5)")
         
         values_seen = set()
         for _ in range(20):  # Run more iterations to likely see different values
-            value = self.interpolator.get_value(0.0)
+            value = self.channel.get_value(0.0)
             self.assertGreaterEqual(value, 0.0)
             self.assertLessEqual(value, 5.0)
             self.assertEqual(value, math.floor(value))  # Check it's an integer
@@ -53,11 +53,11 @@ class TestRandomFunctions(unittest.TestCase):
 
     def test_randint_range(self):
         """Test randint([min, max]) returns integers in the specified range."""
-        self.interpolator.set_keyframe(at=0.0, value="randint([3, 7])")
+        self.channel.add_keyframe(at=0.0, value="randint([3, 7])")
         
         values_seen = set()
         for _ in range(20):  # Run more iterations to likely see different values
-            value = self.interpolator.get_value(0.0)
+            value = self.channel.get_value(0.0)
             self.assertGreaterEqual(value, 3.0)
             self.assertLessEqual(value, 7.0)
             self.assertEqual(value, math.floor(value))  # Check it's an integer

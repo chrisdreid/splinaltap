@@ -150,6 +150,11 @@ print(f"Position rescaled: {result['position']['rescaled']}")  # 15.0
 print(f"Scaled factor: {result['scale']['factor']}")  # 2.5
 print(f"Position value: {result['position']}")  # {'x': 5.0, 'y': 10.0, 'rescaled': 15.0}
 ```
+<details>
+<summary> [Click to Expand] Example of the above code </summary>
+
+![example-above](./unittest/output/example-01.svg)
+</details>
 
 ### Classic Usage Example
 
