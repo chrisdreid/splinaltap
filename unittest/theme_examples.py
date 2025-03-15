@@ -104,22 +104,22 @@ def generate_theme_examples(output_dir="/home/chris/dev/venv/v-splinaltap/unitte
     image_paths = []
     
     # Dark theme (default)
-    dark_path = os.path.join(output_dir, "theme_dark.png")
+    dark_path = os.path.join(output_dir, "theme_dark.svg")
     solver.save_plot(dark_path, samples=200, theme="dark", overlay=True)
     image_paths.append(dark_path)
     
     # Medium theme
-    medium_path = os.path.join(output_dir, "theme_medium.png")
+    medium_path = os.path.join(output_dir, "theme_medium.svg")
     solver.save_plot(medium_path, samples=200, theme="medium", overlay=True)
     image_paths.append(medium_path)
     
     # Light theme
-    light_path = os.path.join(output_dir, "theme_light.png")
+    light_path = os.path.join(output_dir, "theme_light.svg")
     solver.save_plot(light_path, samples=200, theme="light", overlay=True)
     image_paths.append(light_path)
     
     # Generate separate plots (non-overlay)
-    separated_path = os.path.join(output_dir, "separate_splines.png")
+    separated_path = os.path.join(output_dir, "separate_splines.svg")
     solver.save_plot(separated_path, samples=200, theme="dark", overlay=False)
     image_paths.append(separated_path)
     
@@ -128,13 +128,13 @@ def generate_theme_examples(output_dir="/home/chris/dev/venv/v-splinaltap/unitte
         "expressions": ["sine", "cosine"],
         "position": ["x"]
     }
-    filtered_path = os.path.join(output_dir, "filtered_channels.png")
+    filtered_path = os.path.join(output_dir, "filtered_channels.svg")
     solver.save_plot(filtered_path, samples=200, theme="dark", filter_channels=filter_channels)
     image_paths.append(filtered_path)
     
     # Single spline plot (position)
     position = solver.get_spline("position")
-    position_path = os.path.join(output_dir, "single_spline.png")
+    position_path = os.path.join(output_dir, "single_spline.svg")
     position.save_plot(position_path, samples=200, theme="dark", title="Position Channels")
     image_paths.append(position_path)
     

@@ -2,6 +2,8 @@
 
 *Keyframe interpolation and expression evaluation that goes to eleven!*
 
+![Goes To Eleven](./unittest/output/goes-to-eleven.svg)
+
 ## Introduction
 
 SplinalTap is a Python library for advanced interpolation and curve generation with a focus on scientific and mathematical applications. It provides a flexible architecture for defining, manipulating, and evaluating interpolated values using various mathematical methods.
@@ -449,10 +451,13 @@ channel.add_keyframe(at=0.95, value="randint([1, 10])")   # Random integer betwe
 spline.plot(samples=100, title="Cubic Spline Interpolation")
 
 # Save a plot to a file
-spline.save_plot("spline_plot.png", samples=100, title="Cubic Spline Interpolation")
+spline.save_plot("spline_plot.svg", samples=100, title="Cubic Spline Interpolation")
 
 # Get a plot for customization
 fig = spline.get_plot(samples=100, title="Cubic Spline Interpolation")
+
+# Example of a beautiful interpolation visualization:
+![Beautiful Single Spline Example](./unittest/output/beautiful_spline.svg)
 
 # Option 2: Manual plotting with matplotlib
 try:
@@ -1508,3 +1513,5 @@ python -m splinaltap.unittest.test_runner --test-type api
 ```
 
 Note: JAX tests may fail on some systems. You can pass `--skip-jax` to the test runner to skip them.
+
+![Beautiful Spline](./unittest/output/beautiful_spline.svg)

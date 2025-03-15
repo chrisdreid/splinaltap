@@ -214,25 +214,109 @@ def get_example_cli_command():
     """Return example CLI commands that reproduce the same plots."""
     commands = [
         "# Generate dark theme plot (default)",
-        "python -m splinaltap.cli --keyframes \"0:0@cubic\" \"0.25:5@cubic\" \"0.5:0@cubic\" \"0.75:-5@cubic\" \"1:0@cubic\" --samples 200 --visualize save=theme_dark_cli.png",
+        "python -m splinaltap.cli --keyframes \"0:0@cubic\" \"0.25:5@cubic\" \"0.5:0@cubic\" \"0.75:-5@cubic\" \"1:0@cubic\" --samples 200 --visualize save=theme_dark_cli.svg",
         "",
         "# Generate medium theme plot",
-        "python -m splinaltap.cli --keyframes \"0:0@cubic\" \"0.25:5@cubic\" \"0.5:0@cubic\" \"0.75:-5@cubic\" \"1:0@cubic\" --samples 200 --visualize theme=medium save=theme_medium_cli.png",
+        "python -m splinaltap.cli --keyframes \"0:0@cubic\" \"0.25:5@cubic\" \"0.5:0@cubic\" \"0.75:-5@cubic\" \"1:0@cubic\" --samples 200 --visualize theme=medium save=theme_medium_cli.svg",
         "",
         "# Generate light theme plot",
-        "python -m splinaltap.cli --keyframes \"0:0@cubic\" \"0.25:5@cubic\" \"0.5:0@cubic\" \"0.75:-5@cubic\" \"1:0@cubic\" --samples 200 --visualize theme=light save=theme_light_cli.png",
+        "python -m splinaltap.cli --keyframes \"0:0@cubic\" \"0.25:5@cubic\" \"0.5:0@cubic\" \"0.75:-5@cubic\" \"1:0@cubic\" --samples 200 --visualize theme=light save=theme_light_cli.svg",
         "",
         "# Generate separated subplots",
-        "python -m splinaltap.cli --keyframes \"0:0@cubic\" \"0.25:5@cubic\" \"0.5:0@cubic\" \"0.75:-5@cubic\" \"1:0@cubic\" --samples 200 --visualize overlay=false save=separate_cli.png"
+        "python -m splinaltap.cli --keyframes \"0:0@cubic\" \"0.25:5@cubic\" \"0.5:0@cubic\" \"0.75:-5@cubic\" \"1:0@cubic\" --samples 200 --visualize overlay=false save=separate_cli.svg"
     ]
     
     return "\n".join(commands)
+
+def create_goes_to_eleven_example(output_dir=None):
+    """Create a specialized visualization that 'goes to eleven'.
+    
+    This creates a beautiful comparison of multiple interpolation methods,
+    with one method that stands out by "going to eleven" - a humorous reference
+    to the Spinal Tap movie and SplinalTap's name origin.
+    
+    Args:
+        output_dir: Directory where to save the output image
+    
+    Returns:
+        Path to the generated image
+    """
+    # Use unittest/output directory by default
+    if output_dir is None:
+        output_dir = os.path.join(
+            os.path.dirname(os.path.abspath(__file__)),
+            'unittest', 'output'
+        )
+    if not os.path.exists(output_dir):
+        os.makedirs(output_dir)
+    
+    # Create a special solver for this visualization
+    solver = KeyframeSolver(name="GoesToEleven")
+    solver.set_variable("pi", math.pi)
+    
+    # Create a comparison spline
+    methods = solver.create_spline("methods")
+    
+    # Create several standard methods channels
+    linear = methods.add_channel("linear", interpolation="linear")
+    linear.add_keyframe(at=0.0, value=0.0)
+    linear.add_keyframe(at=0.5, value=5.0)
+    linear.add_keyframe(at=1.0, value=0.0)
+    
+    cubic = methods.add_channel("cubic", interpolation="cubic")
+    cubic.add_keyframe(at=0.0, value=0.0)
+    cubic.add_keyframe(at=0.5, value=5.0)
+    cubic.add_keyframe(at=1.0, value=0.0)
+    
+    hermite = methods.add_channel("hermite", interpolation="hermite")
+    hermite.add_keyframe(at=0.0, value=0.0, derivative=0.0)
+    hermite.add_keyframe(at=0.5, value=5.0, derivative=0.0)
+    hermite.add_keyframe(at=1.0, value=0.0, derivative=0.0)
+    
+    # Create a channel that "goes to eleven"
+    eleven = methods.add_channel("eleven", interpolation="cubic")
+    eleven.add_keyframe(at=0.0, value=0.0)
+    eleven.add_keyframe(at=0.25, value=3.0)
+    eleven.add_keyframe(at=0.4, value=8.0)
+    eleven.add_keyframe(at=0.5, value=11.0)  # This one goes to eleven!
+    eleven.add_keyframe(at=0.6, value=8.0)
+    eleven.add_keyframe(at=0.75, value=3.0)
+    eleven.add_keyframe(at=1.0, value=0.0)
+    
+    # Create a spline for showcasing a beautiful single spline
+    showcase = solver.create_spline("showcase")
+    
+    # Create a beautiful showcase with multiple interpolation methods
+    showcase_channel = showcase.add_channel("beautiful", interpolation="cubic")
+    showcase_channel.add_keyframe(at=0.0, value=0.0)
+    showcase_channel.add_keyframe(at=0.2, value=3.0)
+    showcase_channel.add_keyframe(at=0.4, value=-2.0)
+    showcase_channel.add_keyframe(at=0.6, value=5.0)
+    showcase_channel.add_keyframe(at=0.8, value=-3.0)
+    showcase_channel.add_keyframe(at=1.0, value=0.0)
+    
+    # Save the goes-to-eleven comparison plot
+    eleven_path = os.path.join(output_dir, "goes_to_eleven.svg")
+    solver.save_plot(eleven_path, samples=500, theme="dark")
+    
+    # Save the beautiful showcase plot
+    showcase_spline = solver.get_spline("showcase")
+    showcase_path = os.path.join(output_dir, "beautiful_spline.svg")
+    showcase_spline.save_plot(showcase_path, samples=500, theme="dark")
+    
+    return [eleven_path, showcase_path]
 
 if __name__ == "__main__":
     # Generate examples and print their paths
     output_paths = generate_theme_examples()
     print("Generated example images:")
     for path in output_paths:
+        print(f"- {path}")
+    
+    # Generate "goes to eleven" examples
+    eleven_paths = create_goes_to_eleven_example()
+    print("\nGenerated 'goes to eleven' examples:")
+    for path in eleven_paths:
         print(f"- {path}")
         
     # Print CLI commands
