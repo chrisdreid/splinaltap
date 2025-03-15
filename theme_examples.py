@@ -94,11 +94,11 @@ def generate_theme_examples(output_dir=None):
     Returns:
         Paths to the generated images
     """
-    # Use tests/output directory by default
+    # Use unittest/output directory by default
     if output_dir is None:
         output_dir = os.path.join(
-            os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
-            'tests', 'output'
+            os.path.dirname(os.path.abspath(__file__)),
+            'unittest', 'output'
         )
     if not os.path.exists(output_dir):
         os.makedirs(output_dir)

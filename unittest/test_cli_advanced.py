@@ -24,11 +24,9 @@ class TestCLIAdvanced(unittest.TestCase):
     
     def setUp(self):
         """Set up test case."""
-        # Create output directory in tests/output
-        self.output_dir = os.path.join(
-            os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
-            'tests', 'output'
-        )
+        # Create output directory in unittest/output
+        self.unittest_dir = os.path.dirname(os.path.abspath(__file__))
+        self.output_dir = os.path.join(self.unittest_dir, 'output')
         os.makedirs(self.output_dir, exist_ok=True)
         
         # Create temporary directory for test files that will be deleted

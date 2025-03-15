@@ -42,11 +42,9 @@ class TestPlotSave(unittest.TestCase):
         self.y.add_keyframe(at=0.5, value=10.0)
         self.y.add_keyframe(at=1.0, value=0.0)
         
-        # Set up the output directory in tests/output
-        self.output_dir = os.path.join(
-            os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
-            'tests', 'output'
-        )
+        # Set up the output directory in unittest/output
+        self.unittest_dir = os.path.dirname(os.path.abspath(__file__))
+        self.output_dir = os.path.join(self.unittest_dir, 'output')
         os.makedirs(self.output_dir, exist_ok=True)
         
         # Temporary files for testing
