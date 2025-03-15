@@ -275,3 +275,200 @@ class Spline:
         
         # Sample at these positions
         return self.sample(positions, channel_names, ext_channels)
+        
+    def get_plot(
+        self,
+        samples: Optional[int] = None,
+        filter_channels: Optional[List[str]] = None,
+        theme: str = "dark",
+        title: Optional[str] = None,
+        save_path: Optional[str] = None
+    ):
+        """Generate a plot of the spline's channels.
+        
+        Args:
+            samples: Number of evenly spaced samples to use (defaults to 100)
+            filter_channels: Optional list of channel names to include (all if None)
+            theme: Plot theme - 'light' or 'dark'
+            title: Optional title for the plot (defaults to spline name if available)
+            save_path: Optional file path to save the plot (e.g., 'plot.png')
+            
+        Returns:
+            The matplotlib figure
+            
+        Raises:
+            ImportError: If matplotlib is not available
+        """
+        try:
+            import matplotlib.pyplot as plt
+        except ImportError:
+            raise ImportError("Plotting requires matplotlib. Install it with: pip install matplotlib")
+            
+        # Default number of samples
+        if samples is None:
+            samples = 100
+            
+        # Generate sample positions
+        positions = [i / (samples - 1) for i in range(samples)]
+        
+        # Get channel values
+        channel_values = self.sample(positions, filter_channels)
+        
+        # Create figure
+        fig, ax = plt.subplots(figsize=(10, 6))
+        
+        # Set color based on theme
+        if theme == "dark":
+            plt.style.use('dark_background')
+            color_palette = ['#ff9500', '#00b9f1', '#fb02fe', '#01ff66', '#fffd01', '#ff2301']
+            grid_color = '#444444'
+            plt.rcParams.update({
+                'text.color': '#ffffff',
+                'axes.labelcolor': '#ffffff',
+                'axes.edgecolor': '#444444',
+                'axes.facecolor': '#121212',
+                'figure.facecolor': '#121212',
+                'grid.color': '#444444',
+                'xtick.color': '#aaaaaa',
+                'ytick.color': '#aaaaaa',
+                'figure.edgecolor': '#121212',
+                'savefig.facecolor': '#121212',
+                'savefig.edgecolor': '#121212',
+                'legend.facecolor': '#121212',
+                'legend.edgecolor': '#444444',
+                'patch.edgecolor': '#444444'
+            })
+        elif theme == "medium":
+            plt.style.use('default')  # Base on default style
+            color_palette = ['#ff9500', '#00b9f1', '#fb02fe', '#01ff66', '#fffd01', '#ff2301']
+            grid_color = '#cccccc'
+            plt.rcParams.update({
+                'text.color': '#333333',
+                'axes.labelcolor': '#333333',
+                'axes.edgecolor': '#aaaaaa',
+                'axes.facecolor': '#eeeeee',
+                'figure.facecolor': '#f5f5f5',
+                'grid.color': '#cccccc',
+                'xtick.color': '#333333',
+                'ytick.color': '#333333',
+                'figure.edgecolor': '#f5f5f5',
+                'savefig.facecolor': '#f5f5f5',
+                'savefig.edgecolor': '#f5f5f5',
+                'legend.facecolor': '#eeeeee',
+                'legend.edgecolor': '#aaaaaa',
+                'patch.edgecolor': '#aaaaaa'
+            })
+        else:  # light theme
+            plt.style.use('default')
+            color_palette = ['#1f77b4', '#ff7f0e', '#2ca02c', '#d62728', '#9467bd', '#8c564b']
+            grid_color = 'lightgray'
+            
+        # Plot each channel
+        for i, (channel_name, values) in enumerate(channel_values.items()):
+            color = color_palette[i % len(color_palette)]
+            ax.plot(positions, values, label=channel_name, color=color)
+            
+            # Add markers at keyframe positions
+            keyframe_positions = [kf.at for kf in self.channels[channel_name].keyframes]
+            keyframe_values = [self.channels[channel_name].get_value(pos) for pos in keyframe_positions]
+            ax.scatter(keyframe_positions, keyframe_values, color=color, s=50)
+            
+        # Set labels and title
+        ax.set_xlabel('Position')
+        ax.set_ylabel('Value')
+        
+        if title:
+            ax.set_title(title)
+        elif hasattr(self, 'name'):
+            ax.set_title(getattr(self, 'name'))
+            
+        # Add grid and legend
+        ax.grid(True, linestyle='--', alpha=0.7, color=grid_color)
+        
+        # Use custom legend style for each theme
+        if theme == "dark":
+            ax.legend(facecolor='#121212', edgecolor='#444444', labelcolor='white')
+        elif theme == "medium":
+            ax.legend(facecolor='#eeeeee', edgecolor='#aaaaaa', labelcolor='#333333')
+        else:
+            ax.legend()
+        
+        # Set x-axis to 0-1 range
+        ax.set_xlim(0, 1)
+        
+        # Save the plot if a save path is provided
+        if save_path:
+            plt.savefig(save_path, dpi=300, bbox_inches='tight')
+            print(f"Plot saved to {save_path}")
+        
+        return fig
+    
+    def save_plot(
+        self,
+        filepath: str,
+        samples: Optional[int] = None,
+        filter_channels: Optional[List[str]] = None,
+        theme: str = "dark",
+        title: Optional[str] = None
+    ) -> None:
+        """Save a plot of the spline's channels to a file.
+        
+        Args:
+            filepath: The file path to save the plot to (e.g., 'plot.png')
+            samples: Number of evenly spaced samples to use (defaults to 100)
+            filter_channels: Optional list of channel names to include (all if None)
+            theme: Plot theme - 'light' or 'dark'
+            title: Optional title for the plot (defaults to spline name if available)
+            
+        Raises:
+            ImportError: If matplotlib is not available
+        """
+        # Get the plot and save it
+        self.get_plot(samples, filter_channels, theme, title, save_path=filepath)
+        
+    def plot(
+        self,
+        samples: Optional[int] = None,
+        filter_channels: Optional[List[str]] = None,
+        theme: str = "dark",
+        title: Optional[str] = None,
+        save_path: Optional[str] = None
+    ):
+        """Plot the spline's channels.
+        
+        Args:
+            samples: Number of evenly spaced samples to use (defaults to 100)
+            filter_channels: Optional list of channel names to include (all if None)
+            theme: Plot theme - 'light' or 'dark'
+            title: Optional title for the plot (defaults to spline name if available)
+            save_path: Optional file path to save the plot (e.g., 'plot.png')
+            
+        Returns:
+            None - displays the plot
+            
+        Raises:
+            ImportError: If matplotlib is not available
+        """
+        try:
+            import matplotlib.pyplot as plt
+        except ImportError:
+            raise ImportError("Plotting requires matplotlib. Install it with: pip install matplotlib")
+            
+        fig = self.get_plot(samples, filter_channels, theme, title, save_path)
+        plt.show()
+        return None
+        
+    def show(self):
+        """Display the most recently created plot.
+        
+        This is useful in interactive shells to view plots after they've been created.
+        
+        Raises:
+            ImportError: If matplotlib is not available
+        """
+        try:
+            import matplotlib.pyplot as plt
+        except ImportError:
+            raise ImportError("Plotting requires matplotlib. Install it with: pip install matplotlib")
+            
+        plt.show()

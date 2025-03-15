@@ -69,10 +69,17 @@ channel.add_keyframe(at=0.5, value="sin(t * pi) * 10")  # Use expression with t 
 channel.add_keyframe(at=1.0, value=0)             # End at 0
 
 # Evaluate at any point
-value = channel.get_value(0.25)                  # ≈ 7.07 (using cubic interpolation)
+value = channel.get_value(0.25)                  # ≈ 6.25 (using cubic interpolation)
 
 # Evaluate across splines
 result = solver.solve(0.5)                       # Get all channel values at position 0.5
+
+# Visualization features (requires matplotlib)
+solver.plot()                                    # Display plot with all channels
+solver.plot(theme="dark")                        # Use dark theme
+solver.save_plot("output.png")                   # Save plot to file without displaying
+solver.get_plot()                                # Get figure for customization
+solver.show()                                    # Show most recently created plot
 ```
 
 ## Advanced Usage
@@ -213,6 +220,9 @@ python splinaltap --keyframes "0:0@cubic" "0.5:10@cubic" "1:0@cubic" --samples 0
 # Create a visualization with sin wave using mathematical expressions
 python splinaltap --visualize --keyframes "0:0@cubic" "0.5:sin(t*3.14159)@cubic" "1:0@cubic" --samples 100
 
+# Visualize with dark theme and save to a file
+python splinaltap --visualize theme=dark save=output.png --keyframes "0:0@cubic" "0.5:10@cubic" "1:0@cubic" --samples 100
+
 # Use custom sample range (from 2.0 to 3.0 instead of 0-1)
 python splinaltap --keyframes "0:0" "1:10" --samples 5 --range 2,3
 
@@ -251,6 +261,9 @@ pip install numpy
 
 # For YAML output format support
 pip install pyyaml
+
+# For visualization and plotting capabilities
+pip install matplotlib
 
 # For CUDA 11.x GPU support
 pip install cupy-cuda11x
@@ -405,8 +418,7 @@ If the backends are properly installed, you should see successful output from th
 ## Quick Start
 
 ```python
-from splinaltap import KeyframeSolver, Spline, Channel
-import matplotlib.pyplot as plt
+from splinaltap import KeyframeSolver
 
 # Create a solver and spline
 solver = KeyframeSolver(name="Interpolation")
@@ -427,16 +439,59 @@ channel.add_keyframe(at=0.7, value="amplitude * sin(t)")
 channel.add_keyframe(at=0.9, value="rand() * 5")          # Random float between 0 and 5
 channel.add_keyframe(at=0.95, value="randint([1, 10])")   # Random integer between 1 and 10
 
-# Evaluate at various points
-positions = [i * 0.01 for i in range(101)]
-values = [channel.get_value(p) for p in positions]
+# Option 1: Using the built-in plotting methods
+# Plot the spline directly (if matplotlib is installed)
+spline.plot(samples=100, title="Cubic Spline Interpolation")
 
-# Plot the results
-plt.figure(figsize=(12, 6))
-plt.plot(positions, values)
-plt.title("Cubic Spline Interpolation")
-plt.grid(True)
-plt.show()
+# Save a plot to a file
+spline.save_plot("spline_plot.png", samples=100, title="Cubic Spline Interpolation")
+
+# Get a plot for customization
+fig = spline.get_plot(samples=100, title="Cubic Spline Interpolation")
+
+# Option 2: Manual plotting with matplotlib
+try:
+    import matplotlib.pyplot as plt
+
+    # Evaluate at various points
+    positions = [i * 0.01 for i in range(101)]
+    values = [channel.get_value(p) for p in positions]
+
+    # Plot the results
+    plt.figure(figsize=(12, 6))
+    plt.plot(positions, values)
+    plt.title("Cubic Spline Interpolation")
+    plt.grid(True)
+    plt.show()
+except ImportError:
+    print("Matplotlib is not installed for manual plotting")
+
+# Plot the entire solver with the default dark theme
+solver.plot(samples=100)  # Default: dark theme, overlay=True
+
+# Plot with medium theme
+solver.plot(samples=100, theme="medium")
+
+# Plot with light theme
+solver.plot(samples=100, theme="light")
+
+# Plot with each spline in its own subplot
+solver.plot(samples=100, overlay=False)
+
+# Plot and save to file in one operation
+solver.plot(samples=100, save_path="dark_theme_plot.png")
+
+# Save plot without displaying
+solver.save_plot("plot_file.png", samples=100)
+
+# Plot only specific channels
+solver.plot(
+    samples=100,
+    filter_channels={"main": ["value"]}  # Only plot main.value channel
+)
+
+# Show most recently created plot (useful in interactive shells)
+solver.show()
 ```
 
 ## Command Line Interface
@@ -650,6 +705,7 @@ SplinalTap supports two main JSON file formats: single-dimension interpolators a
 ### Working with Solver Files
 
 A Solver is a collection of multiple named splines, which can be useful for complex datasets with multiple parameters. Here's an example of a Solver file structure:
+
 
 ```json
 {
@@ -1028,6 +1084,106 @@ value = data["results"]["position"]["x"][1]  # 5.0
 The hierarchical organization also makes the output more readable and maintains the logical structure of the data.
 
 For more details on each command, run `splinaltap <command> --help`.
+
+### Visualization Options
+
+SplinalTap provides built-in visualization capabilities through the `--visualize` command. You can customize the visualization using key=value pairs directly with the command:
+
+```bash
+# Basic visualization (shows a plot)
+python splinaltap --visualize --keyframes "0:0@cubic" "0.5:10@cubic" "1:0@cubic" --samples 100
+
+# Use dark theme
+python splinaltap --visualize theme=dark --keyframes "0:0@cubic" "0.5:10@cubic" "1:0@cubic"
+
+# Save to file without displaying
+python splinaltap --visualize save=plot.png --keyframes "0:0@cubic" "0.5:10@cubic" "1:0@cubic"
+
+# Combine options
+python splinaltap --visualize theme=dark save=dark_plot.png --keyframes "0:0@cubic" "0.5:10@cubic" "1:0@cubic"
+```
+
+Available visualization options:
+- `theme=dark|medium|light`: Set the plot theme (default: dark)
+- `save=/path/to/file.png`: Save the plot to a file instead of or in addition to displaying it
+- `overlay=true|false`: If true (default), all channels are plotted in a single graph; if false, each spline gets its own subplot
+
+**Visual themes:**
+![Visual Themes](/unittest/theme_dark.png)
+*Dark theme (default)*
+
+![Medium Theme](/unittest/theme_medium.png)
+*Medium theme*
+
+![Light Theme](/unittest/theme_light.png)
+*Light theme*
+
+**Overlay vs. Separate:**
+![Overlay=false](/unittest/separate_splines.png)
+*Separate splines (overlay=false)*
+
+**Complex Visualization Example:**
+
+```python
+# API Example: Create a complex visualization
+from splinaltap.solver import KeyframeSolver
+
+# Create solver with multiple splines and channels
+solver = KeyframeSolver(name="ComplexVisExample")
+
+# Position spline with x,y,z channels
+position = solver.create_spline("position")
+x = position.add_channel("x", interpolation="cubic")
+y = position.add_channel("y", interpolation="linear")
+z = position.add_channel("z", interpolation="step")
+
+# Add keyframes
+x.add_keyframe(at=0.0, value=0.0)
+x.add_keyframe(at=0.25, value=5.0)  
+x.add_keyframe(at=0.5, value=0.0)
+x.add_keyframe(at=0.75, value=-5.0)
+x.add_keyframe(at=1.0, value=0.0)
+
+y.add_keyframe(at=0.0, value=0.0)
+y.add_keyframe(at=0.2, value=3.0)
+y.add_keyframe(at=0.8, value=-1.0)
+y.add_keyframe(at=1.0, value=0.0)
+
+z.add_keyframe(at=0.0, value=0.0)
+z.add_keyframe(at=0.4, value=-2.0)
+z.add_keyframe(at=0.6, value=1.0)
+z.add_keyframe(at=1.0, value=0.0)
+
+# Generate a high-resolution plot with 300 samples
+solver.plot(samples=300, theme="dark")  # Default: overlay=True
+
+# Save separate plots for each spline
+solver.save_plot("separate_plots.png", samples=200, overlay=False)
+
+# Filter to show only specific channels
+filter_channels = {
+    "position": ["x", "y"]  # Only show position.x and position.y
+}
+solver.plot(samples=200, filter_channels=filter_channels)
+```
+
+**CLI Visualization Example:**
+
+```bash
+# Generate dark theme plot (default)
+python -m splinaltap.cli --keyframes "0:0@cubic" "0.25:5@cubic" "0.5:0@cubic" "0.75:-5@cubic" "1:0@cubic" --samples 200 --visualize save=theme_dark_cli.png
+
+# Generate medium theme plot
+python -m splinaltap.cli --keyframes "0:0@cubic" "0.25:5@cubic" "0.5:0@cubic" "0.75:-5@cubic" "1:0@cubic" --samples 200 --visualize theme=medium save=theme_medium_cli.png
+
+# Generate light theme plot
+python -m splinaltap.cli --keyframes "0:0@cubic" "0.25:5@cubic" "0.5:0@cubic" "0.75:-5@cubic" "1:0@cubic" --samples 200 --visualize theme=light save=theme_light_cli.png
+
+# Generate separated subplots
+python -m splinaltap.cli --keyframes "0:0@cubic" "0.25:5@cubic" "0.5:0@cubic" "0.75:-5@cubic" "1:0@cubic" --samples 200 --visualize overlay=false save=separate_cli.png
+```
+
+These visualization options directly utilize the Solver's built-in plotting methods, which are also available programmatically through the Python API.
 
 ## API Usage Examples
 
