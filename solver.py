@@ -322,11 +322,19 @@ class KeyframeSolver:
             """Helper function that uses _evaluate_channel_at_time to get dependencies at sub_t."""
             # sub_chan_name might be 'otherSpline.otherChan' or just 'otherChan' for same spline
             if '.' not in sub_chan_name:
-                # same spline
+                # same spline - this is a local channel reference
                 sub_node_key = f"{spline_name}.{sub_chan_name}"
             else:
+                # This is a fully qualified reference (e.g., "position.x")
                 sub_node_key = sub_chan_name
-            return self._evaluate_channel_at_time(sub_node_key, sub_t, external_channels)
+            
+            # Check if the node key exists before evaluating
+            spline_part, channel_part = sub_node_key.split('.', 1)
+            if spline_part in self.splines and channel_part in self.splines[spline_part].channels:
+                return self._evaluate_channel_at_time(sub_node_key, sub_t, external_channels)
+            else:
+                # If the specified spline.channel doesn't exist, return 0
+                return 0
 
         # Prepare variable context for channel evaluation
         combined_vars = {}

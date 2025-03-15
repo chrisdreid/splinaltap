@@ -139,6 +139,8 @@ class ExpressionEvaluator:
                 self.allowed_nodes = {
                     # Expression types
                     ast.Expression, ast.Num, ast.UnaryOp, ast.BinOp, ast.Name, ast.Call, ast.Load, ast.Constant,
+                    # Attribute access for spline.channel references
+                    ast.Attribute,
                     # Binary operators
                     ast.Add, ast.Sub, ast.Mult, ast.Div, ast.Pow, 
                     # Comparison operators
@@ -174,6 +176,16 @@ class ExpressionEvaluator:
                     # This allows for 'factor' to be used in 'x * factor', for example,
                     # as long as 'factor' is published when the expression is evaluated.
                     self.used_vars.add(node.id)
+                super().generic_visit(node)
+                
+            def visit_Attribute(self, node):
+                # Handle attribute access like position.x
+                # This is necessary for fully qualified channel references
+                if isinstance(node.value, ast.Name):
+                    # Get the full reference as a string (e.g., "position.x")
+                    full_name = f"{node.value.id}.{node.attr}"
+                    # Add it to used_vars so we know it's a dependency
+                    self.used_vars.add(full_name)
                 super().generic_visit(node)
             
             def visit_Call(self, node):
@@ -232,12 +244,63 @@ class ExpressionEvaluator:
             else:
                 # For t and channel variables
                 def dynamic_ctx_lookup(ctx):
-                    value = ctx.get(name, 0)
+                    # First, try to get the value directly from the context (this handles fully qualified names)
+                    value = ctx.get(name, None)
+                    
+                    # If the value wasn't found and there's a channel lookup function, try using it
+                    if value is None and '__channel_lookup__' in ctx:
+                        channel_lookup = ctx['__channel_lookup__']
+                        try:
+                            # Use the channel lookup function with the current time
+                            value = channel_lookup(name, ctx.get('t', 0))
+                        except Exception:
+                            # If lookup fails, default to 0
+                            value = 0
+                    elif value is None:
+                        # Default to 0 if variable is not found
+                        value = 0
+                    
                     # Convert NumPy arrays to Python scalar values
                     if hasattr(value, 'item') and hasattr(value, 'size') and value.size == 1:
                         return value.item()
                     return value
                 return dynamic_ctx_lookup
+                
+        def visit_Attribute(self, node):
+            # Handle attribute access like position.x
+            # This is necessary for fully qualified channel references
+            if isinstance(node.value, ast.Name):
+                # Get the full reference as a string (e.g., "position.x")
+                full_name = f"{node.value.id}.{node.attr}"
+                
+                # Use channel_lookup function if available
+                def attribute_ctx_lookup(ctx):
+                    # Try to use the channel lookup function
+                    if '__channel_lookup__' in ctx:
+                        channel_lookup = ctx['__channel_lookup__']
+                        try:
+                            value = channel_lookup(full_name, ctx.get('t', 0))
+                            
+                            # Convert NumPy arrays to Python scalar values
+                            if hasattr(value, 'item') and hasattr(value, 'size') and value.size == 1:
+                                return value.item()
+                            return value
+                        except Exception:
+                            # If lookup fails, try a context lookup
+                            pass
+                    
+                    # Try regular context lookup
+                    value = ctx.get(full_name, 0)
+                    
+                    # Convert NumPy arrays to Python scalar values
+                    if hasattr(value, 'item') and hasattr(value, 'size') and value.size == 1:
+                        return value.item()
+                    return value
+                return attribute_ctx_lookup
+            else:
+                # This is for more complex attribute access like object.method.property
+                # We don't support this, so return 0
+                return lambda ctx: 0
         
         def visit_BinOp(self, node):
             # Handle binary operations
@@ -358,7 +421,17 @@ class DependencyExtractor(ast.NodeVisitor):
             and node.id not in self.known_variables
             and node.id != 't'  # or other built-in placeholders
         ):
+            # Add the name as a potential dependency
             self.references.add(node.id)
+        self.generic_visit(node)
+        
+    def visit_Attribute(self, node: ast.Attribute):
+        # Handle attribute access (e.g., position.x)
+        if isinstance(node.value, ast.Name):
+            # Construct the full name (spline.channel)
+            full_name = f"{node.value.id}.{node.attr}"
+            # Add as a dependency
+            self.references.add(full_name)
         self.generic_visit(node)
 
 
