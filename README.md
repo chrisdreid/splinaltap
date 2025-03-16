@@ -1,6 +1,6 @@
 # splinaltap
 
-*Keyframe interpolation and expression evaluation that goes to eleven!*
+*Keyframe interpolation and expression evaluation that goes to [eleven](https://www.youtube.com/watch?v=4xgx4k83zzc)!*
 
 ![Goes To Eleven](https://github.com/chrisdreid/splinaltap/raw/main/unittest/output/goes-to-eleven.svg)
 
@@ -1542,4 +1542,6 @@ python -m splinaltap.unittest.test_runner --test-type api
 
 Note: JAX tests may fail on some systems. You can pass `--skip-jax` to the test runner to skip them.
 
+
 ![Beautiful Spline](https://github.com/chrisdreid/splinaltap/raw/main/unittest/output/beautiful_spline.svg)
+
