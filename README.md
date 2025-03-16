@@ -1,6 +1,6 @@
 # splinaltap
 
-*Keyframe interpolation and expression evaluation that goes to eleven!*
+*Keyframe interpolation and expression evaluation that goes to [eleven](https://www.youtube.com/watch?v=4xgx4k83zzc)!*
 
 ![Goes To Eleven](./unittest/output/goes-to-eleven.svg)
 
