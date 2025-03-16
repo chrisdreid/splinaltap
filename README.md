@@ -2,7 +2,7 @@
 
 *Keyframe interpolation and expression evaluation that goes to eleven!*
 
-![Goes To Eleven](./unittest/output/goes-to-eleven.svg)
+![Goes To Eleven](https://github.com/chrisdreid/splinaltap/raw/main/unittest/output/goes-to-eleven.svg)
 
 ## Introduction
 
@@ -83,7 +83,7 @@ solver.save_plot("output.png")                   # Save plot to file without dis
 solver_plot = solver.get_plot()                                # Get figure for customization
 solver_plot.show()                                    # Show most recently created plot
 ```
-![example-above](./unittest/output/basic-usage-01.svg)
+![example-above](https://github.com/chrisdreid/splinaltap/raw/main/unittest/output/basic-usage-01.svg)
 
 
 ## Advanced Usage
@@ -155,7 +155,7 @@ print(f"Scaled factor: {result['scale']['factor']}")  # 2.5
 print(f"Position value: {result['position']}")  # {'x': 5.0, 'y': 10.0, 'rescaled': 15.0}
 ```
 
-![example-above](./unittest/output/cross-chan-cross-spline-01.svg)
+![example-above](https://github.com/chrisdreid/splinaltap/raw/main/unittest/output/cross-chan-cross-spline-01.svg)
 
 
 ### Classic Usage Example
@@ -255,12 +255,37 @@ python splinaltap --input-file data.json --samples 100 --output-file output.json
 ## Installation
 
 ```bash
+# Basic installation
 pip install splinaltap
+
+# Install with NumPy acceleration
+pip install splinaltap[numpy]
+
+# Install with visualization support
+pip install splinaltap[visualize]
+
+# Install with GPU support using JAX
+pip install splinaltap[gpu]
+
+# Install with Numba JIT compilation
+pip install splinaltap[numba]
+
+# Install with all optional dependencies
+pip install splinaltap[all]
 ```
 
 ### Optional Dependencies
 
-For enhanced performance and additional features, you can install these dependencies:
+Each installation option provides different features:
+
+1. **Basic**: Core functionality with pure Python implementation
+2. **NumPy** (`splinaltap[numpy]`): CPU-accelerated math operations
+3. **Visualize** (`splinaltap[visualize]`): Plotting and visualization capabilities with matplotlib
+4. **GPU** (`splinaltap[gpu]`): GPU acceleration with JAX and CuPy
+5. **Numba** (`splinaltap[numba]`): JIT compilation for faster CPU computations
+6. **All** (`splinaltap[all]`): All optional dependencies for maximum performance
+
+You can also install individual dependencies manually:
 
 ```bash
 # For NumPy support (CPU acceleration)
@@ -280,6 +305,9 @@ pip install cupy-cuda12x
 
 # For JAX support (GPU acceleration with autodiff)
 pip install "jax[cuda]" -f https://storage.googleapis.com/jax-releases/jax_cuda_releases.html
+
+# For Numba JIT compilation
+pip install numba
 ```
 
 
@@ -1146,14 +1174,14 @@ Available visualization options:
 ![Visual Themes](./unittest/output/theme_dark.svg)
 *Dark theme (default)*
 
-![Medium Theme](./unittest/output/theme_medium.svg)
+![Medium Theme](https://github.com/chrisdreid/splinaltap/raw/main/unittest/output/theme_medium.svg)
 *Medium theme*
 
-![Light Theme](./unittest/output/theme_light.svg)
+![Light Theme](https://github.com/chrisdreid/splinaltap/raw/main/unittest/output/theme_light.svg)
 *Light theme*
 
 **Overlay vs. Separate:**
-![Overlay=false](./unittest/output/separate_splines.svg)
+![Overlay=false](https://github.com/chrisdreid/splinaltap/raw/main/unittest/output/separate_splines.svg)
 *Separate splines (overlay=false)*
 
 **Complex Visualization Example:**
@@ -1514,4 +1542,4 @@ python -m splinaltap.unittest.test_runner --test-type api
 
 Note: JAX tests may fail on some systems. You can pass `--skip-jax` to the test runner to skip them.
 
-![Beautiful Spline](./unittest/output/beautiful_spline.svg)
+![Beautiful Spline](https://github.com/chrisdreid/splinaltap/raw/main/unittest/output/beautiful_spline.svg)
