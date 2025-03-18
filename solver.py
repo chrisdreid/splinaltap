@@ -693,7 +693,9 @@ class KeyframeSolver:
         filter_channels: Optional[Dict[str, List[str]]] = None, 
         theme: str = "dark",
         save_path: Optional[str] = None,
-        overlay: bool = True
+        overlay: bool = True,
+        width: Optional[float] = None,
+        height: Optional[float] = None
     ) -> 'matplotlib.figure.Figure':
         """Generate a plot for the solver's splines and channels.
         
@@ -704,7 +706,9 @@ class KeyframeSolver:
             theme: Plot theme - 'light' or 'dark'
             save_path: Optional file path to save the plot (e.g., 'plot.png')
             overlay: If True, all splines are plotted in a single graph; if False, each spline gets its own subplot
-            
+            width: Optional figure width in inches (defaults to 12)
+            height: Optional figure height in inches (defaults to 8 if overlay=True, 4*num_splines if overlay=False)
+
         Returns:
             The matplotlib figure
             
@@ -802,7 +806,9 @@ class KeyframeSolver:
         
         if overlay:
             # Create a single figure for all splines/channels
-            fig = plt.figure(figsize=(12, 8))
+            figure_width = width or 12
+            figure_height = height or 8
+            fig = plt.figure(figsize=(figure_width, figure_height))
             ax = fig.add_subplot(111)
             
             # Used to track all channel names for a combined legend
@@ -875,7 +881,9 @@ class KeyframeSolver:
             
         else:
             # Create a figure with separate subplots for each spline (original behavior)
-            fig = plt.figure(figsize=(12, 4 * num_splines))
+            figure_width = width or 12
+            figure_height = height or (4 * num_splines)
+            fig = plt.figure(figsize=(figure_width, figure_height))
             gs = GridSpec(num_splines, 1, figure=fig)
             
             # Plot each spline in its own subplot
@@ -965,7 +973,9 @@ class KeyframeSolver:
         samples: Optional[int] = None,
         filter_channels: Optional[Dict[str, List[str]]] = None,
         theme: str = "dark",
-        overlay: bool = True
+        overlay: bool = True,
+        width: Optional[float] = None,
+        height: Optional[float] = None
     ) -> None:
         """Save a plot of the solver's splines and channels to a file.
         
@@ -975,12 +985,14 @@ class KeyframeSolver:
             filter_channels: Optional dictionary mapping spline names to lists of channel names to include
             theme: Plot theme - 'light' or 'dark'
             overlay: If True, all splines are plotted in a single graph; if False, each spline gets its own subplot
+            width: Optional figure width in inches (defaults to 12)
+            height: Optional figure height in inches (defaults to 8 if overlay=True, 4*num_splines if overlay=False)
             
         Raises:
             ImportError: If matplotlib is not available
         """
         # Get the plot and save it
-        self.get_plot(samples, filter_channels, theme, save_path=filepath, overlay=overlay)
+        self.get_plot(samples, filter_channels, theme, save_path=filepath, overlay=overlay, width=width, height=height)
     
     def plot(
         self, 
@@ -988,7 +1000,9 @@ class KeyframeSolver:
         filter_channels: Optional[Dict[str, List[str]]] = None, 
         theme: str = "dark",
         save_path: Optional[str] = None,
-        overlay: bool = True
+        overlay: bool = True,
+        width: Optional[float] = None,
+        height: Optional[float] = None
     ):
         """Plot the solver's splines and channels.
         
@@ -998,6 +1012,8 @@ class KeyframeSolver:
             theme: Plot theme - 'light' or 'dark'
             save_path: Optional file path to save the plot (e.g., 'plot.png')
             overlay: If True, all splines are plotted in a single graph; if False, each spline gets its own subplot
+            width: Optional figure width in inches (defaults to 12)
+            height: Optional figure height in inches (defaults to 8 if overlay=True, 4*num_splines if overlay=False)
             
         Returns:
             None - displays the plot
@@ -1010,7 +1026,7 @@ class KeyframeSolver:
         except ImportError:
             raise ImportError("Plotting requires matplotlib. Install it with: pip install matplotlib")
             
-        fig = self.get_plot(samples, filter_channels, theme, save_path, overlay)
+        fig = self.get_plot(samples, filter_channels, theme, save_path, overlay, width, height)
         plt.show()
         return None
         
@@ -1020,8 +1036,22 @@ class KeyframeSolver:
             filter_channels: Optional[Dict[str, List[str]]] = None, 
             theme: str = "dark",
             save_path: Optional[str] = None,
-            overlay: bool = True):
-        self.plot(samples, filter_channels, theme, save_path, overlay)
+            overlay: bool = True,
+            width: Optional[float] = None,
+            height: Optional[float] = None
+        ):
+        """Display the plot (alias for plot method).
+        
+        Args:
+            samples: Number of evenly spaced samples to use (defaults to 100)
+            filter_channels: Optional dictionary mapping spline names to lists of channel names to include
+            theme: Plot theme - 'light' or 'dark'
+            save_path: Optional file path to save the plot (e.g., 'plot.png')
+            overlay: If True, all splines are plotted in a single graph; if False, each spline gets its own subplot
+            width: Optional figure width in inches (defaults to 12)
+            height: Optional figure height in inches (defaults to 8 if overlay=True, 4*num_splines if overlay=False)
+        """
+        self.plot(samples, filter_channels, theme, save_path, overlay, width, height)
     
     def save(self, filepath: str, format: Optional[str] = None) -> None:
         """Save the solver to a file.
