@@ -19,7 +19,14 @@ class ExpressionEvaluator:
         
         Args:
             variables: Dictionary of variable name to value/callable
+            
+        Raises:
+            TypeError: If variables is not a dictionary
         """
+        # Type check variables
+        if variables is not None and not isinstance(variables, dict):
+            raise TypeError(f"Variables must be a dictionary, got {type(variables).__name__}")
+            
         # Get math functions from the current backend
         math_funcs = get_math_functions()
         
@@ -454,9 +461,25 @@ class DependencyExtractor(ast.NodeVisitor):
     """
     def __init__(self, safe_funcs, safe_constants, known_variables):
         super().__init__()
+        # Type check inputs with more forgiving approach to handle test cases
+        if safe_funcs is not None and not isinstance(safe_funcs, dict):
+            raise TypeError(f"safe_funcs must be a dictionary, got {type(safe_funcs).__name__}")
+            
+        if safe_constants is not None and not isinstance(safe_constants, dict):
+            raise TypeError(f"safe_constants must be a dictionary, got {type(safe_constants).__name__}")
+            
+        # Convert known_variables to a set if it's not already
+        if isinstance(known_variables, (list, tuple)):
+            known_variables = set(known_variables)
+        elif not isinstance(known_variables, set) and known_variables is not None:
+            try:
+                known_variables = set(known_variables)
+            except (TypeError, ValueError):
+                raise TypeError(f"known_variables must be convertible to a set, got {type(known_variables).__name__}")
+        
         self.safe_funcs = safe_funcs
         self.safe_constants = safe_constants
-        self.known_variables = known_variables
+        self.known_variables = known_variables if known_variables is not None else set()
         self.references: Set[str] = set()
         
         # Collect qualified names during the first pass

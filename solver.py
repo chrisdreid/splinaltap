@@ -41,7 +41,13 @@ class KeyframeSolver:
         
         Args:
             name: The name of the solver
+            
+        Raises:
+            TypeError: If name is not a string
         """
+        if not isinstance(name, str):
+            raise TypeError(f"Name must be a string, got {type(name).__name__}")
+            
         self.name = name
         self.splines: Dict[str, Spline] = {}
         self.metadata: Dict[str, Any] = {}
@@ -425,17 +431,35 @@ class KeyframeSolver:
         self._evaluation_cache[cache_key] = val
         return val
 
-    def solve(self, position: float, external_channels: Optional[Dict[str, Any]] = None, method: str = "topo") -> Dict[str, Dict[str, Any]]:
-        """Solve all splines at a specific position using topological ordering by default.
+    def solve(self, position: Union[float, List[float]], external_channels: Optional[Dict[str, Any]] = None, method: str = "topo") -> Union[Dict[str, Dict[str, Any]], List[Dict[str, Dict[str, Any]]]]:
+        """Solve all splines at one or more positions using topological ordering by default.
         
         Args:
-            position: The position to solve at
+            position: The position to solve at, either a single float or a list of floats
             external_channels: Optional external channel values
             method: Solver method ('topo' or 'ondemand', default: 'topo')
             
         Returns:
-            A dictionary of spline names to channel value dictionaries
+            If position is a float:
+                A dictionary of spline names to channel value dictionaries
+            If position is a list of floats:
+                A list of dictionaries, each mapping spline names to channel value dictionaries
+                
+        Raises:
+            TypeError: If position is neither a float nor a list of floats
         """
+        # Check if we're solving for multiple positions
+        if isinstance(position, list):
+            # Make sure all elements are numbers
+            if not all(isinstance(pos, (int, float)) for pos in position):
+                raise TypeError("When position is a list, all elements must be numbers")
+            # Apply solve to each position (we can optimize this implementation in the future)
+            return [self.solve(pos, external_channels, method) for pos in position]
+            
+        # From here on, position should be a single float
+        if not isinstance(position, (int, float)):
+            raise TypeError(f"Position must be a float or a list of floats, got {type(position).__name__}")
+            
         # Allow specifying the solver method
         if method == "ondemand":
             return self.solve_on_demand(position, external_channels)
@@ -482,16 +506,34 @@ class KeyframeSolver:
 
         return out
 
-    def solve_on_demand(self, position: float, external_channels: Optional[Dict[str, Any]] = None) -> Dict[str, Dict[str, Any]]:
-        """Solve all splines at a specific position using the original on-demand method.
+    def solve_on_demand(self, position: Union[float, List[float]], external_channels: Optional[Dict[str, Any]] = None) -> Union[Dict[str, Dict[str, Any]], List[Dict[str, Dict[str, Any]]]]:
+        """Solve all splines at one or more positions using the original on-demand method.
         
         Args:
-            position: The position to solve at
+            position: The position to solve at, either a single float or a list of floats
             external_channels: Optional external channel values
             
         Returns:
-            A dictionary of spline names to channel value dictionaries
+            If position is a float:
+                A dictionary of spline names to channel value dictionaries
+            If position is a list of floats:
+                A list of dictionaries, each mapping spline names to channel value dictionaries
+                
+        Raises:
+            TypeError: If position is neither a float nor a list of floats
         """
+        # Check if we're solving for multiple positions
+        if isinstance(position, list):
+            # Make sure all elements are numbers
+            if not all(isinstance(pos, (int, float)) for pos in position):
+                raise TypeError("When position is a list, all elements must be numbers")
+            # Apply solve to each position
+            return [self.solve_on_demand(pos, external_channels) for pos in position]
+            
+        # From here on, position should be a single float
+        if not isinstance(position, (int, float)):
+            raise TypeError(f"Position must be a float or a list of floats, got {type(position).__name__}")
+            
         result = {}
         
         # Apply range normalization if needed
@@ -637,9 +679,13 @@ class KeyframeSolver:
             
         Returns:
             A list of result dictionaries, one for each position
+        
+        Note:
+            This is a wrapper around the solve method for backward compatibility.
+            Using solve() directly with a list of positions is now possible and preferred.
         """
-        # Apply range normalization separately to each position
-        return [self.solve(position, external_channels, method=method) for position in positions]
+        # Simply delegate to the solve method, which now supports lists of positions
+        return self.solve(positions, external_channels, method=method)
         
     def get_plot(
         self, 
@@ -711,27 +757,43 @@ class KeyframeSolver:
         elif theme == "medium":
             plt.style.use('default')  # Base on default style
             color_palette = ['#ff9500', '#00b9f1', '#fb02fe', '#01ff66', '#fffd01', '#ff2301']
-            grid_color = '#cccccc'
+            grid_color = '#666666'
             plt.rcParams.update({
-                'text.color': '#333333',
-                'axes.labelcolor': '#333333',
-                'axes.edgecolor': '#aaaaaa',
-                'axes.facecolor': '#eeeeee',
-                'figure.facecolor': '#f5f5f5',
-                'grid.color': '#cccccc',
-                'xtick.color': '#333333',
-                'ytick.color': '#333333',
-                'figure.edgecolor': '#f5f5f5',
-                'savefig.facecolor': '#f5f5f5',
-                'savefig.edgecolor': '#f5f5f5',
-                'legend.facecolor': '#eeeeee',
-                'legend.edgecolor': '#aaaaaa',
-                'patch.edgecolor': '#aaaaaa'
+                'text.color': '#e0e0e0',
+                'axes.labelcolor': '#e0e0e0',
+                'axes.edgecolor': '#666666',
+                'axes.facecolor': '#333333',
+                'figure.facecolor': '#222222',
+                'grid.color': '#666666',
+                'xtick.color': '#cccccc',
+                'ytick.color': '#cccccc',
+                'figure.edgecolor': '#222222',
+                'savefig.facecolor': '#222222',
+                'savefig.edgecolor': '#222222',
+                'legend.facecolor': '#333333',
+                'legend.edgecolor': '#666666',
+                'patch.edgecolor': '#666666'
             })
         else:  # light theme
             plt.style.use('default')
             color_palette = ['#1f77b4', '#ff7f0e', '#2ca02c', '#d62728', '#9467bd', '#8c564b']
             grid_color = 'lightgray'
+            plt.rcParams.update({
+                'text.color': '#333333',
+                'axes.labelcolor': '#333333',
+                'axes.edgecolor': '#bbbbbb',
+                'axes.facecolor': '#ffffff',
+                'figure.facecolor': '#ffffff',
+                'grid.color': '#dddddd',
+                'xtick.color': '#666666',
+                'ytick.color': '#666666',
+                'figure.edgecolor': '#ffffff',
+                'savefig.facecolor': '#ffffff',
+                'savefig.edgecolor': '#ffffff',
+                'legend.facecolor': '#ffffff',
+                'legend.edgecolor': '#cccccc',
+                'patch.edgecolor': '#cccccc'
+            })
             
         # Evaluate all channels at the sample positions
         results = []
@@ -804,9 +866,9 @@ class KeyframeSolver:
             if theme == "dark":
                 ax.legend(facecolor='#121212', edgecolor='#444444', labelcolor='white')
             elif theme == "medium":
-                ax.legend(facecolor='#eeeeee', edgecolor='#aaaaaa', labelcolor='#333333')
-            else:
-                ax.legend()
+                ax.legend(facecolor='#333333', edgecolor='#666666', labelcolor='#e0e0e0')
+            else:  # light theme
+                ax.legend(facecolor='#ffffff', edgecolor='#cccccc', labelcolor='#333333')
             
             # Set x-axis to 0-1 range
             ax.set_xlim(0, 1)
@@ -875,9 +937,9 @@ class KeyframeSolver:
                 if theme == "dark":
                     ax.legend(facecolor='#121212', edgecolor='#444444', labelcolor='white')
                 elif theme == "medium":
-                    ax.legend(facecolor='#eeeeee', edgecolor='#aaaaaa', labelcolor='#333333')
-                else:
-                    ax.legend()
+                    ax.legend(facecolor='#333333', edgecolor='#666666', labelcolor='#e0e0e0')
+                else:  # light theme
+                    ax.legend(facecolor='#ffffff', edgecolor='#cccccc', labelcolor='#333333')
                 
                 # Set x-axis to 0-1 range
                 ax.set_xlim(0, 1)
@@ -952,20 +1014,14 @@ class KeyframeSolver:
         plt.show()
         return None
         
-    def show(self):
-        """Display the most recently created plot.
-        
-        This is useful in interactive shells to view plots after they've been created.
-        
-        Raises:
-            ImportError: If matplotlib is not available
-        """
-        try:
-            import matplotlib.pyplot as plt
-        except ImportError:
-            raise ImportError("Plotting requires matplotlib. Install it with: pip install matplotlib")
-            
-        plt.show()
+    def show(
+            self, 
+            samples: Optional[int] = None, 
+            filter_channels: Optional[Dict[str, List[str]]] = None, 
+            theme: str = "dark",
+            save_path: Optional[str] = None,
+            overlay: bool = True):
+        self.plot(samples, filter_channels, theme, save_path, overlay)
     
     def save(self, filepath: str, format: Optional[str] = None) -> None:
         """Save the solver to a file.

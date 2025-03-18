@@ -276,6 +276,49 @@ class TestSolverAPI(unittest.TestCase):
         self.assertGreater(result["position"]["x"], 0.0)
         # Skip the exact value test for now as we need to fix publishing behavior
         # self.assertEqual(result["expressions"]["dependent"], 100.0)
+        
+    def test_solve_with_list(self):
+        """Test solving multiple positions at once with the enhanced solve method."""
+        solver = KeyframeSolver()
+        spline = solver.create_spline("curve")
+        channel = spline.add_channel("value")
+        
+        # Add keyframes
+        channel.add_keyframe(at=0.0, value=0.0)   # Start at 0
+        channel.add_keyframe(at=0.5, value=10.0)  # Peak at 10
+        channel.add_keyframe(at=1.0, value=0.0)   # End at 0
+        
+        # Define sample points
+        sample_points = [0.0, 0.25, 0.5, 0.75, 1.0]
+        
+        # Solve at multiple positions using the enhanced solve method directly
+        results = solver.solve(sample_points)
+        
+        # Verify we got the correct number of results
+        self.assertEqual(len(results), len(sample_points))
+        
+        # Verify each result is a dictionary
+        for result in results:
+            self.assertIsInstance(result, dict)
+            self.assertIn("curve", result)
+            self.assertIn("value", result["curve"])
+            
+        # Verify values at specific points (depends on cubic interpolation behavior)
+        self.assertEqual(results[0]["curve"]["value"], 0.0)    # Point at t=0
+        self.assertEqual(results[2]["curve"]["value"], 10.0)   # Point at t=0.5
+        self.assertEqual(results[4]["curve"]["value"], 0.0)    # Point at t=1
+        
+        # Verify solve_multiple and solve with list return same results
+        multiple_results = solver.solve_multiple(sample_points)
+        for i in range(len(sample_points)):
+            self.assertEqual(results[i]["curve"]["value"], multiple_results[i]["curve"]["value"])
+        
+        # Test error handling for invalid input
+        with self.assertRaises(TypeError):
+            solver.solve("not_a_number_or_list")
+        
+        with self.assertRaises(TypeError):
+            solver.solve([0.0, "not_a_number", 1.0])
 
 if __name__ == "__main__":
     unittest.main()
