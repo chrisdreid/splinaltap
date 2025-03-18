@@ -40,7 +40,37 @@ class Keyframe:
             interpolation: Optional interpolation method for this keyframe
             control_points: Optional control points for bezier interpolation
             derivative: Optional derivative value for hermite interpolation
+            
+        Raises:
+            TypeError: If at is not a number
+            TypeError: If value is not a number, string, or callable
+            TypeError: If interpolation is not None or a string
+            TypeError: If control_points is not None or a list of floats
+            TypeError: If derivative is not None or a float
         """
+        # Type check at
+        if not isinstance(at, (int, float)):
+            raise TypeError(f"'at' parameter must be a number, got {type(at).__name__}")
+            
+        # Type check value
+        if not isinstance(value, (int, float, str)) and not callable(value):
+            raise TypeError(f"Value must be a number, string, or callable, got {type(value).__name__}")
+            
+        # Type check interpolation
+        if interpolation is not None and not isinstance(interpolation, str):
+            raise TypeError(f"Interpolation must be a string or None, got {type(interpolation).__name__}")
+            
+        # Type check control_points
+        if control_points is not None:
+            if not isinstance(control_points, (list, tuple)):
+                raise TypeError(f"Control points must be a list or tuple, got {type(control_points).__name__}")
+            if not all(isinstance(point, (int, float)) for point in control_points):
+                raise TypeError("All control points must be numbers (int or float)")
+                
+        # Type check derivative
+        if derivative is not None and not isinstance(derivative, (int, float)):
+            raise TypeError(f"Derivative must be a number or None, got {type(derivative).__name__}")
+            
         self.at = at  # Keep the 'at' parameter name for backward compatibility
         self.value = value
         self.interpolation = interpolation
@@ -68,7 +98,35 @@ class Channel:
             min_max: Optional min/max range constraints for this channel's values
             variables: Optional variables to be used in expressions
             publish: Optional list of channel references to publish this channel's value to
+            
+        Raises:
+            TypeError: If interpolation is not a string
+            TypeError: If min_max is not a tuple of two floats
+            TypeError: If variables is not a dictionary
+            TypeError: If publish is not a list of strings
         """
+        # Type check interpolation
+        if not isinstance(interpolation, str):
+            raise TypeError(f"Interpolation must be a string, got {type(interpolation).__name__}")
+            
+        # Type check min_max
+        if min_max is not None:
+            if not isinstance(min_max, tuple) or len(min_max) != 2:
+                raise TypeError(f"min_max must be a tuple of two floats, got {type(min_max).__name__}")
+            if not all(isinstance(v, (int, float)) for v in min_max):
+                raise TypeError(f"min_max values must be numeric (int or float)")
+                
+        # Type check variables
+        if variables is not None and not isinstance(variables, dict):
+            raise TypeError(f"Variables must be a dictionary, got {type(variables).__name__}")
+            
+        # Type check publish
+        if publish is not None:
+            if not isinstance(publish, list):
+                raise TypeError(f"Publish must be a list, got {type(publish).__name__}")
+            if not all(isinstance(item, str) for item in publish):
+                raise TypeError("All items in publish list must be strings")
+                
         self.interpolation = interpolation
         self.min_max = min_max
         self.keyframes: List[Keyframe] = []

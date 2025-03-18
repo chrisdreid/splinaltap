@@ -25,7 +25,28 @@ class Spline:
         Args:
             range: Optional global time range [min, max] for the spline
             variables: Optional variables to be used in expressions
+            callbacks: Optional callbacks to be called on channel access
+            
+        Raises:
+            TypeError: If range is not a tuple of two floats
+            TypeError: If variables is not a dictionary
+            TypeError: If callbacks is not a dictionary
         """
+        # Type check range
+        if range is not None:
+            if not isinstance(range, tuple) or len(range) != 2:
+                raise TypeError(f"Range must be a tuple of two floats, got {type(range).__name__}")
+            if not all(isinstance(v, (int, float)) for v in range):
+                raise TypeError(f"Range values must be numeric (int or float)")
+                
+        # Type check variables
+        if variables is not None and not isinstance(variables, dict):
+            raise TypeError(f"Variables must be a dictionary, got {type(variables).__name__}")
+            
+        # Type check callbacks
+        if callbacks is not None and not isinstance(callbacks, dict):
+            raise TypeError(f"Callbacks must be a dictionary, got {type(callbacks).__name__}")
+        
         self.range = range or (0.0, 1.0)
         self.variables = variables or {}
         self.channels: Dict[str, Channel] = {}
@@ -341,27 +362,43 @@ class Spline:
         elif theme == "medium":
             plt.style.use('default')  # Base on default style
             color_palette = ['#ff9500', '#00b9f1', '#fb02fe', '#01ff66', '#fffd01', '#ff2301']
-            grid_color = '#cccccc'
+            grid_color = '#666666'
             plt.rcParams.update({
-                'text.color': '#333333',
-                'axes.labelcolor': '#333333',
-                'axes.edgecolor': '#aaaaaa',
-                'axes.facecolor': '#eeeeee',
-                'figure.facecolor': '#f5f5f5',
-                'grid.color': '#cccccc',
-                'xtick.color': '#333333',
-                'ytick.color': '#333333',
-                'figure.edgecolor': '#f5f5f5',
-                'savefig.facecolor': '#f5f5f5',
-                'savefig.edgecolor': '#f5f5f5',
-                'legend.facecolor': '#eeeeee',
-                'legend.edgecolor': '#aaaaaa',
-                'patch.edgecolor': '#aaaaaa'
+                'text.color': '#e0e0e0',
+                'axes.labelcolor': '#e0e0e0',
+                'axes.edgecolor': '#666666',
+                'axes.facecolor': '#333333',
+                'figure.facecolor': '#222222',
+                'grid.color': '#666666',
+                'xtick.color': '#cccccc',
+                'ytick.color': '#cccccc',
+                'figure.edgecolor': '#222222',
+                'savefig.facecolor': '#222222',
+                'savefig.edgecolor': '#222222',
+                'legend.facecolor': '#333333',
+                'legend.edgecolor': '#666666',
+                'patch.edgecolor': '#666666'
             })
         else:  # light theme
             plt.style.use('default')
             color_palette = ['#1f77b4', '#ff7f0e', '#2ca02c', '#d62728', '#9467bd', '#8c564b']
             grid_color = 'lightgray'
+            plt.rcParams.update({
+                'text.color': '#333333',
+                'axes.labelcolor': '#333333',
+                'axes.edgecolor': '#bbbbbb',
+                'axes.facecolor': '#ffffff',
+                'figure.facecolor': '#ffffff',
+                'grid.color': '#dddddd',
+                'xtick.color': '#666666',
+                'ytick.color': '#666666',
+                'figure.edgecolor': '#ffffff',
+                'savefig.facecolor': '#ffffff',
+                'savefig.edgecolor': '#ffffff',
+                'legend.facecolor': '#ffffff',
+                'legend.edgecolor': '#cccccc',
+                'patch.edgecolor': '#cccccc'
+            })
             
         # Plot each channel
         for i, (channel_name, values) in enumerate(channel_values.items()):
@@ -389,9 +426,9 @@ class Spline:
         if theme == "dark":
             ax.legend(facecolor='#121212', edgecolor='#444444', labelcolor='white')
         elif theme == "medium":
-            ax.legend(facecolor='#eeeeee', edgecolor='#aaaaaa', labelcolor='#333333')
-        else:
-            ax.legend()
+            ax.legend(facecolor='#333333', edgecolor='#666666', labelcolor='#e0e0e0')
+        else:  # light theme
+            ax.legend(facecolor='#ffffff', edgecolor='#cccccc', labelcolor='#333333')
         
         # Set x-axis to 0-1 range
         ax.set_xlim(0, 1)
@@ -458,17 +495,12 @@ class Spline:
         plt.show()
         return None
         
-    def show(self):
-        """Display the most recently created plot.
-        
-        This is useful in interactive shells to view plots after they've been created.
-        
-        Raises:
-            ImportError: If matplotlib is not available
-        """
-        try:
-            import matplotlib.pyplot as plt
-        except ImportError:
-            raise ImportError("Plotting requires matplotlib. Install it with: pip install matplotlib")
-            
-        plt.show()
+    def show(
+        self, 
+        samples: Optional[int] = None, 
+        filter_channels: Optional[List[str]] = None, 
+        theme: str = "dark", 
+        title: Optional[str] = None, 
+        save_path: Optional[str] = None
+    ):
+        self.plot(samples, filter_channels, theme, title, save_path)

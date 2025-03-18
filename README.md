@@ -75,6 +75,7 @@ value = channel.get_value(0.25)                  # ≈ 6.25 (using cubic interpo
 
 # Evaluate across splines
 result = solver.solve(0.5)                       # Get all channel values at position 0.5
+results = solver.solve([0.25, 0.5, 0.75])        # Get values at multiple positions at once
 
 # Visualization features (requires matplotlib)
 solver.plot()                                    # Display plot with all channels
@@ -1299,7 +1300,9 @@ print(f"Position at 0.75: {position_075}")
 
 # Evaluate multiple positions at once
 positions = [0.0, 0.25, 0.5, 0.75, 1.0]
-results = solver.solve_multiple(positions)
+# Two equivalent ways to solve for multiple positions:
+results = solver.solve(positions)                # Enhanced solve method accepts list of positions
+results2 = solver.solve_multiple(positions)      # Legacy method (uses solve internally)
 print(f"Multiple results: {results}")
 
 # Save to file in different formats
@@ -1416,7 +1419,8 @@ results = solver.solve(0.5, method="topo")  # Topological (default)
 results = solver.solve(0.5, method="ondemand")  # On-demand (legacy)
 
 # Also works with multiple positions
-results = solver.solve_multiple([0.1, 0.2, 0.3], method="topo")
+results = solver.solve([0.1, 0.2, 0.3], method="topo")  # Enhanced solve method accepts list
+results = solver.solve_multiple([0.1, 0.2, 0.3], method="topo")  # Legacy method
 ```
 
 From the command line, specify the solver method:
