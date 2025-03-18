@@ -13,7 +13,7 @@ from .visualization import plot_interpolation_comparison, plot_single_interpolat
 Channel = Spline
 Keyframe = Knot
 
-__version__ = "0.8.0"
+__version__ = "1.0.0"
 __all__ = [
     "SplineSolver",
     "KeyframeSolver",  # For backward compatibility
