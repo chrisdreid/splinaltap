@@ -14,25 +14,22 @@
     "position.x": ["*"],
     "position.y": ["expressions.sine"]
   },
-  "splines": [
-    {
-      "name": "position",
-      "channels": [
-        {
-          "name": "x",
+  "spline_groups": {
+    "position": {
+      "splines": {
+        "x": {
           "interpolation": "linear",
           "min_max": [0, 100],
-          "keyframes": [
+          "knots": [
             { "@": 0.0, "value": 0.0 },
             { "@": 0.5, "value": 50.0 },
             { "@": 1.0, "value": 100.0 }
           ]
         },
-        {
-          "name": "y",
+        "y": {
           "interpolation": "cubic",
           "publish": ["expressions.*"],
-          "keyframes": [
+          "knots": [
             { "@": 0.0, "value": 0.0 },
             { "@": 0.25, "value": 25.0 },
             { "@": 0.5, "value": 50.0 },
@@ -40,60 +37,53 @@
             { "@": 1.0, "value": 0.0 }
           ]
         },
-        {
-          "name": "z",
+        "z": {
           "interpolation": "step",
-          "keyframes": [
+          "knots": [
             { "@": 0.0, "value": 0.0 },
             { "@": 0.5, "value": 50.0 },
             { "@": 1.0, "value": 0.0 }
           ]
         }
-      ]
+      }
     },
-    {
-      "name": "rotation",
-      "channels": [
-        {
-          "name": "angle",
+    "rotation": {
+      "splines": {
+        "angle": {
           "interpolation": "cubic",
           "min_max": [0, 360],
-          "keyframes": [
+          "knots": [
             { "@": 0.0, "value": 0.0 },
             { "@": 1.0, "value": 360.0 }
           ]
         }
-      ]
+      }
     },
-    {
-      "name": "expressions",
-      "channels": [
-        {
-          "name": "sine",
+    "expressions": {
+      "splines": {
+        "sine": {
           "interpolation": "linear",
-          "keyframes": [
+          "knots": [
             { "@": 0.0, "value": "sin(0)" },
             { "@": 0.5, "value": "sin(pi/2)" },
             { "@": 1.0, "value": "sin(pi)" }
           ]
         },
-        {
-          "name": "random",
+        "random": {
           "interpolation": "linear",
-          "keyframes": [
+          "knots": [
             { "@": 0.0, "value": "rand() * amplitude" },
             { "@": 1.0, "value": "randint(5)" }
           ]
         },
-        {
-          "name": "dependent",
+        "dependent": {
           "interpolation": "linear",
-          "keyframes": [
+          "knots": [
             { "@": 0.0, "value": "position.x + position.y" },
             { "@": 1.0, "value": "position.x * 2" }
           ]
         }
-      ]
+      }
     }
-  ]
+  }
 }

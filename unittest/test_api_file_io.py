@@ -5,11 +5,11 @@ import unittest
 import os
 import json
 import tempfile
-from splinaltap import KeyframeSolver
+from splinaltap import SplineSolver
 from splinaltap.backends import BackendManager
 
 class TestFileIO(unittest.TestCase):
-    """Test file I/O operations for the KeyframeSolver."""
+    """Test file I/O operations for the SplineSolver."""
     
     def setUp(self):
         """Set up test case."""
@@ -35,7 +35,7 @@ class TestFileIO(unittest.TestCase):
                        f"Test input file not found: {self.input_file}")
         
         # Load the solver
-        solver = KeyframeSolver.from_file(self.input_file)
+        solver = SplineSolver.from_file(self.input_file)
         
         # Verify basic solver properties
         self.assertEqual(solver.name, "TestScene")
@@ -47,56 +47,58 @@ class TestFileIO(unittest.TestCase):
         self.assertAlmostEqual(solver.variables["pi"], 3.14159)
         self.assertEqual(solver.variables["amplitude"], 10)
         
-        # Verify splines
-        self.assertEqual(len(solver.splines), 3)
-        self.assertIn("position", solver.splines)
-        self.assertIn("rotation", solver.splines)
-        self.assertIn("expressions", solver.splines)
+        # Verify spline_groups
+        self.assertEqual(len(solver.spline_groups), 3)
+        self.assertIn("position", solver.spline_groups)
+        self.assertIn("rotation", solver.spline_groups)
+        self.assertIn("expressions", solver.spline_groups)
         
-        # Verify channels
-        position_spline = solver.splines["position"]
-        self.assertEqual(len(position_spline.channels), 3)
-        self.assertIn("x", position_spline.channels)
-        self.assertIn("y", position_spline.channels)
-        self.assertIn("z", position_spline.channels)
+        # Verify splines
+        position_group = solver.spline_groups["position"]
+        self.assertEqual(len(position_group.splines), 3)
+        self.assertIn("x", position_group.splines)
+        self.assertIn("y", position_group.splines)
+        self.assertIn("z", position_group.splines)
         
         # Verify interpolation methods
-        self.assertEqual(position_spline.channels["x"].interpolation, "linear")
-        self.assertEqual(position_spline.channels["y"].interpolation, "cubic")
-        self.assertEqual(position_spline.channels["z"].interpolation, "step")
+        self.assertEqual(position_group.splines["x"].interpolation, "linear")
+        self.assertEqual(position_group.splines["y"].interpolation, "cubic")
+        self.assertEqual(position_group.splines["z"].interpolation, "step")
         
         # Verify min/max values
-        self.assertEqual(position_spline.channels["x"].min_max, (0, 100))
+        self.assertEqual(position_group.splines["x"].min_max, (0, 100))
         
-        # Verify keyframes
-        x_keyframes = position_spline.channels["x"].keyframes
+        # Verify knots
+        x_knots = position_group.splines["x"].knots
         
-        # Now verify the keyframe count
-        self.assertEqual(len(x_keyframes), 3)
+        # Now verify the knot count
+        self.assertEqual(len(x_knots), 3)
         
-        # Verify expression channel
-        expressions_spline = solver.splines["expressions"]
-        self.assertIn("sine", expressions_spline.channels)
-        self.assertIn("random", expressions_spline.channels)
+        # Verify expression spline group
+        expressions_group = solver.spline_groups["expressions"]
+        self.assertIn("sine", expressions_group.splines)
+        self.assertIn("random", expressions_group.splines)
         
-        # Test evaluation of sine channel at key points
-        sine_channel = expressions_spline.channels["sine"]
-        self.assertAlmostEqual(sine_channel.get_value(0.0), 0.0, places=5)
-        self.assertAlmostEqual(sine_channel.get_value(0.5), 1.0, places=5)
-        self.assertAlmostEqual(sine_channel.get_value(1.0), 0.0, places=5)
+        # Test evaluation of sine spline at key points
+        sine_spline = expressions_group.splines["sine"]
+        self.assertAlmostEqual(sine_spline.get_value(0.0), 0.0, places=5)
+        self.assertAlmostEqual(sine_spline.get_value(0.5), 1.0, places=5)
+        self.assertAlmostEqual(sine_spline.get_value(1.0), 0.0, places=5)
     
     def test_save_and_reload(self):
         """Test saving a solver to a file and loading it back."""
         # Create a simple solver with known values
-        original_solver = KeyframeSolver(name="TestSaveAndReload")
+        original_solver = SplineSolver(name="TestSaveAndReload")
         original_solver.set_metadata("author", "Test User")
         original_solver.set_variable("scale", 2.0)
         
-        # Create a spline with one channel
-        spline = original_solver.create_spline("main")
-        channel = spline.add_channel("position")
-        channel.add_keyframe(at=0.0, value=0.0)
-        channel.add_keyframe(at=1.0, value=10.0)
+        # Create a spline group with one spline
+        spline_group = original_solver.create_spline_group("main")
+        # Add a spline to the group
+        spline = spline_group.add_spline("position")
+        # Add knots to the spline
+        spline.add_knot(at=0.0, value=0.0)
+        spline.add_knot(at=1.0, value=10.0)
         
         # Create an output file in the unittest/output directory
         output_dir = os.path.join(self.unittest_dir, 'output')
@@ -110,7 +112,7 @@ class TestFileIO(unittest.TestCase):
         self.assertTrue(os.path.exists(output_file))
         
         # Create a new solver by loading the file
-        new_solver = KeyframeSolver(name="NewSolver")  # Different name
+        new_solver = SplineSolver(name="NewSolver")  # Different name
         
         # Verify the new solver is different
         self.assertNotEqual(new_solver.name, original_solver.name)
@@ -127,14 +129,14 @@ class TestFileIO(unittest.TestCase):
     def test_file_format_conversion(self):
         """Test converting between file formats."""
         # Create a simple solver to save
-        simple_solver = KeyframeSolver(name="SimpleTestSolver")
+        simple_solver = SplineSolver(name="SimpleTestSolver")
         simple_solver.set_metadata("author", "Test User")
         
-        # Create a spline
-        spline = simple_solver.create_spline("test_spline")
-        channel = spline.add_channel("test_channel")
-        channel.add_keyframe(at=0.0, value=0.0)
-        channel.add_keyframe(at=1.0, value=10.0)
+        # Create a spline group with a spline
+        spline_group = simple_solver.create_spline_group("test_spline")
+        spline = spline_group.add_spline("test_channel")
+        spline.add_knot(at=0.0, value=0.0)
+        spline.add_knot(at=1.0, value=10.0)
         
         # Create a temporary JSON output file
         json_file = os.path.join(self.temp_dir.name, 'output.json')
@@ -157,7 +159,7 @@ class TestFileIO(unittest.TestCase):
         # Test loading a nonexistent file
         nonexistent_file = os.path.join(self.temp_dir.name, 'nonexistent.json')
         with self.assertRaises(FileNotFoundError):
-            KeyframeSolver.from_file(nonexistent_file)
+            SplineSolver.from_file(nonexistent_file)
         
         # Test loading a file with invalid JSON
         invalid_json_file = os.path.join(self.temp_dir.name, 'invalid.json')
@@ -165,7 +167,7 @@ class TestFileIO(unittest.TestCase):
             f.write("{invalid json")
         
         with self.assertRaises(json.JSONDecodeError):
-            KeyframeSolver.from_file(invalid_json_file)
+            SplineSolver.from_file(invalid_json_file)
             
         # For the incorrect structure test, we'll just use a simpler structure
         # rather than expecting an error - the important thing is that the test passes
@@ -174,17 +176,17 @@ class TestFileIO(unittest.TestCase):
             json.dump({"name": "TestSolver", "metadata": {"test": "value"}}, f)
         
         # We verify the loaded solver has expected values
-        solver = KeyframeSolver.from_file(simple_structure_file)
+        solver = SplineSolver.from_file(simple_structure_file)
         self.assertEqual(solver.name, "TestSolver")
         self.assertEqual(solver.metadata.get("test"), "value")
-        self.assertEqual(len(solver.splines), 0)  # No splines
+        self.assertEqual(len(solver.spline_groups), 0)  # No spline groups
 
         # We verify the loaded solver has expected values
-        load_solver = KeyframeSolver()
+        load_solver = SplineSolver()
         load_solver.load(simple_structure_file)
         self.assertEqual(load_solver.name, "TestSolver")
         self.assertEqual(load_solver.metadata.get("test"), "value")
-        self.assertEqual(len(load_solver.splines), 0)  # No splines
+        self.assertEqual(len(solver.spline_groups), 0)  # No spline groups
 
 if __name__ == "__main__":
     unittest.main()

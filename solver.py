@@ -1,7 +1,7 @@
 """
-KeyframeSolver class for SplinalTap interpolation.
+SplineSolver class for SplinalTap interpolation.
 
-A KeyframeSolver is a collection of Splines that can be evaluated together.
+A SplineSolver is a collection of SplineGroups that can be evaluated together.
 It represents a complete animation or property set, like a scene in 3D software.
 """
 
@@ -11,12 +11,12 @@ import pickle
 from collections import defaultdict
 from typing import Dict, List, Optional, Union, Any, Tuple, Set, Callable
 
-from .spline import Spline
+from .spline import SplineGroup
 from .expression import ExpressionEvaluator, extract_expression_dependencies
 from .backends import get_math_functions
 
-# KeyframeSolver file format version
-KEYFRAME_SOLVER_FORMAT_VERSION = "2.0"
+# SplineSolver file format version
+SPLINE_SOLVER_FORMAT_VERSION = "2.0"
 
 try:
     import numpy as np
@@ -33,8 +33,8 @@ except ImportError:
     HAS_YAML = False
 
 
-class KeyframeSolver:
-    """A solver containing multiple splines for complex animation."""
+class SplineSolver:
+    """A solver containing multiple spline groups for complex animation."""
     
     def __init__(self, name: str = "Untitled"):
         """Initialize a new solver.
@@ -49,7 +49,7 @@ class KeyframeSolver:
             raise TypeError(f"Name must be a string, got {type(name).__name__}")
             
         self.name = name
-        self.splines: Dict[str, Spline] = {}
+        self.spline_groups: Dict[str, SplineGroup] = {}
         self.metadata: Dict[str, Any] = {}
         self.variables: Dict[str, Any] = {}
         self.range: Tuple[float, float] = (0.0, 1.0)
@@ -60,44 +60,99 @@ class KeyframeSolver:
         self._evaluation_cache = {}
     
     def __repr__(self) -> str:
-        return f"{self.__class__.__name__}(name={self.name}, splines={self.splines}, metadata={self.metadata}, variables={self.variables}, range={self.range}, publish={self.publish})"
+        return f"{self.__class__.__name__}(name={self.name}, spline_groups={self.spline_groups}, metadata={self.metadata}, variables={self.variables}, range={self.range}, publish={self.publish})"
     
-    def create_spline(self, name: str) -> Spline:
-        """Create a new spline in this solver.
+    def create_spline_group(self, name: str, replace: bool = False) -> SplineGroup:
+        """Create a new spline group in this solver.
         
         Args:
-            name: The name of the spline
+            name: The name of the spline group
+            replace: If True, replace an existing spline group with the same name
             
         Returns:
-            The newly created spline
-        """
-        spline = Spline()
-        self.splines[name] = spline
-        return spline
-    
-    def get_spline(self, name: str) -> Spline:
-        """Get a spline by name.
-        
-        Args:
-            name: The name of the spline to get
-            
-        Returns:
-            The requested spline
+            The newly created spline group
             
         Raises:
-            KeyError: If the spline does not exist
+            ValueError: If a spline group with the given name already exists and replace is False
         """
-        if name not in self.splines:
-            raise KeyError(f"Spline '{name}' does not exist in this solver")
-        return self.splines[name]
+        if name in self.spline_groups and not replace:
+            raise ValueError(f"SplineGroup '{name}' already exists in this solver")
+            
+        spline_group = SplineGroup()
+        self.spline_groups[name] = spline_group
+        return spline_group
     
-    def get_spline_names(self) -> List[str]:
-        """Get the names of all splines in this solver.
+    def get_spline_group(self, name: str) -> SplineGroup:
+        """Get a spline group by name.
+        
+        Args:
+            name: The name of the spline group to get
+            
+        Returns:
+            The requested spline group
+            
+        Raises:
+            KeyError: If the spline group does not exist
+        """
+        if name not in self.spline_groups:
+            raise KeyError(f"SplineGroup '{name}' does not exist in this solver")
+        return self.spline_groups[name]
+    
+    def get_spline_group_names(self) -> List[str]:
+        """Get the names of all spline groups in this solver.
         
         Returns:
-            A list of spline names
+            A list of spline group names
         """
-        return list(self.splines.keys())
+        return list(self.spline_groups.keys())
+        
+    # Backward compatibility methods
+    
+    def create_spline(self, name: str, interpolation: str = "cubic", min_max: Optional[Tuple[float, float]] = None,
+                     replace: bool = False) -> SplineGroup:
+        """Backward compatibility method that creates a spline group.
+        
+        Args:
+            name: Name of the spline group
+            interpolation: Default interpolation method
+            min_max: Optional min/max range for values
+            replace: Whether to replace an existing spline group with the same name
+            
+        Returns:
+            The created spline group
+        """
+        spline_group = self.create_spline_group(name, replace=replace)
+        # For backward compatibility, create a "value" spline in the group
+        spline_group.add_spline("value", interpolation=interpolation, min_max=min_max)
+        return spline_group
+        
+    def get_spline(self, name: str) -> SplineGroup:
+        """Backward compatibility method that gets a spline group.
+        
+        Args:
+            name: Name of the spline group
+            
+        Returns:
+            The spline group with the given name
+        """
+        return self.get_spline_group(name)
+        
+    def get_spline_names(self) -> List[str]:
+        """Backward compatibility method that gets a list of all spline group names.
+        
+        Returns:
+            List of spline group names
+        """
+        return self.get_spline_group_names()
+        
+    @property
+    def splines(self) -> Dict[str, SplineGroup]:
+        """Backward compatibility property that returns the spline groups dictionary.
+        
+        Returns:
+            Dictionary of spline groups
+        """
+        return self.spline_groups
     
     def set_metadata(self, key: str, value: Any) -> None:
         """Set a metadata value.
@@ -118,17 +173,17 @@ class KeyframeSolver:
         self.variables[name] = value
         
     def set_publish(self, source: str, targets: List[str]) -> None:
-        """Set up a publication channel for cross-channel or cross-spline access.
+        """Set up a publication channel for cross-spline or cross-group access.
         
         Args:
-            source: The source channel in "spline.channel" format
-            targets: A list of targets that can access the source ("spline.channel" format or "*" for global)
+            source: The source spline in "group.spline" format
+            targets: A list of targets that can access the source ("group.spline" format or "*" for global)
         
         Raises:
             ValueError: If source format is incorrect
         """
         if '.' not in source:
-            raise ValueError(f"Source must be in 'spline.channel' format, got {source}")
+            raise ValueError(f"Source must be in 'group.spline' format, got {source}")
             
         self.publish[source] = targets
         
@@ -138,7 +193,7 @@ class KeyframeSolver:
         
     def _build_dependency_graph(self) -> Dict[str, Set[str]]:
         """
-        Build a directed graph of channel dependencies (node = 'spline.channel').
+        Build a directed graph of spline dependencies (node = 'group.spline').
         Edge from X->Y if Y depends on X (i.e. Y's expression references X or Y is published by X).
         """
         graph = defaultdict(set)
@@ -164,34 +219,34 @@ class KeyframeSolver:
         safe_constants = {'pi': math_funcs['pi'], 'e': math_funcs['e']}
         known_variables = set(self.variables.keys())  # solver-level variables
 
-        def node_key(spline_name, channel_name):
-            return f"{spline_name}.{channel_name}"
+        def node_key(group_name, spline_name):
+            return f"{group_name}.{spline_name}"
 
         # 2) Build a list of all nodes
         all_nodes = []
-        for spline_name, spline in self.splines.items():
-            for channel_name in spline.channels:
-                all_nodes.append(node_key(spline_name, channel_name))
+        for group_name, group in self.spline_groups.items():
+            for spline_name in group.splines:
+                all_nodes.append(node_key(group_name, spline_name))
         
         # Ensure each node appears in graph with an empty set (in case no dependencies)
         for node in all_nodes:
             graph[node] = set()
         
-        # 3) Inspect each channel for expression references
-        for spline_name, spline in self.splines.items():
-            for channel_name, channel in spline.channels.items():
-                current_node = node_key(spline_name, channel_name)
+        # 3) Inspect each spline for expression references
+        for group_name, group in self.spline_groups.items():
+            for spline_name, spline in group.splines.items():
+                current_node = node_key(group_name, spline_name)
 
-                for kf in channel.keyframes:
-                    # If the keyframe is an expression (string), parse it
+                for knot in spline.knots:
+                    # If the knot is an expression (string), parse it
                     # If your system stores an already-compiled callable, you may want
                     # to store the original expression string so we can re-parse it for deps
                     expr_str = None
-                    if isinstance(kf.value, str):
-                        expr_str = kf.value
-                    # If kf.value is a callable that wraps a string expression
-                    elif hasattr(kf.value, '__splinaltap_expr__'):
-                        expr_str = kf.value.__splinaltap_expr__
+                    if isinstance(knot.value, str):
+                        expr_str = knot.value
+                    # If knot.value is a callable that wraps a string expression
+                    elif hasattr(knot.value, '__splinaltap_expr__'):
+                        expr_str = knot.value.__splinaltap_expr__
                     
                     if expr_str:
                         deps = extract_expression_dependencies(
@@ -200,14 +255,14 @@ class KeyframeSolver:
                             safe_constants,
                             known_variables
                         )
-                        # For each dep, if it has a '.', treat it as "spline.channel"
-                        # else treat as "currentSpline.dep"
+                        # For each dep, if it has a '.', treat it as "group.spline"
+                        # else treat as "currentGroup.dep"
                         for ref in deps:
                             if '.' in ref:
                                 dependency_node = ref
                             else:
-                                # same spline
-                                dependency_node = node_key(spline_name, ref)
+                                # same group
+                                dependency_node = node_key(group_name, ref)
                                 
                             # Only add if the dependency node actually exists
                             if dependency_node in all_nodes:
@@ -215,10 +270,10 @@ class KeyframeSolver:
                                 graph[dependency_node].add(current_node)
 
                 # 4) Also handle "publish" list
-                # If this channel publishes to otherChannel,
-                # we interpret that otherChannel depends on this channel
-                if hasattr(channel, 'publish') and channel.publish:
-                    for target_ref in channel.publish:
+                # If this spline publishes to otherSpline,
+                # we interpret that otherSpline depends on this spline
+                if hasattr(spline, 'publish') and spline.publish:
+                    for target_ref in spline.publish:
                         if target_ref == "*":
                             # Global means "anyone can see it," but we don't know the specifics
                             # Usually we skip or handle differently
@@ -227,7 +282,7 @@ class KeyframeSolver:
                             if '.' in target_ref:
                                 target_node = target_ref
                             else:
-                                target_node = node_key(spline_name, target_ref)
+                                target_node = node_key(group_name, target_ref)
                                 
                             # Only add if the target node actually exists
                             if target_node in all_nodes:
@@ -239,25 +294,25 @@ class KeyframeSolver:
             if source in all_nodes:
                 for target in targets:
                     if target == "*":
-                        # Global publish - all channels can depend on this source
+                        # Global publish - all splines can depend on this source
                         for node in all_nodes:
                             if node != source:  # Avoid self-dependencies
                                 graph[source].add(node)
                     elif '.' in target and target in all_nodes:
-                        # Specific target channel
+                        # Specific target spline
                         graph[source].add(target)
                     elif target.endswith(".*"):
-                        # Wildcard for all channels in a spline
-                        spline_prefix = target[:-1]  # Remove the ".*"
+                        # Wildcard for all splines in a group
+                        group_prefix = target[:-1]  # Remove the ".*"
                         for node in all_nodes:
-                            if node.startswith(spline_prefix) and node != source:
+                            if node.startswith(group_prefix) and node != source:
                                 graph[source].add(node)
 
         return graph
         
     def _topological_sort(self, graph: Dict[str, Set[str]]) -> List[str]:
         """
-        Returns a list of node_keys (e.g., 'spline.channel') in valid topological order.
+        Returns a list of node_keys (e.g., 'group.spline') in valid topological order.
         Raises ValueError if there's a cycle.
         """
         # 1) Compute in-degrees
@@ -281,7 +336,7 @@ class KeyframeSolver:
                     queue.append(dep)
 
         if len(topo_order) != len(graph):
-            raise ValueError("Cycle detected in channel dependencies.")
+            raise ValueError("Cycle detected in spline dependencies.")
 
         return topo_order
     
@@ -306,144 +361,144 @@ class KeyframeSolver:
         else:
             return position
 
-    def _evaluate_channel_at_time(self, node_key: str, t: float,
-                                  external_channels: Dict[str, Any]) -> float:
+    def _evaluate_spline_at_time(self, node_key: str, t: float,
+                              external_splines: Dict[str, Any]) -> float:
         """
-        Evaluate a single channel at time 't' (0-1 normalized), using the caching dict.
-        If we have a cached value, use it; otherwise, compute via channel's get_value.
-        This method also ensures that if the channel references another channel at time offset,
-        we do a sub-call back into _evaluate_channel_at_time(...) with a different t_sub.
+        Evaluate a single spline at time 't' (0-1 normalized), using the caching dict.
+        If we have a cached value, use it; otherwise, compute via spline's get_value.
+        This method also ensures that if the spline references another spline at time offset,
+        we do a sub-call back into _evaluate_spline_at_time(...) with a different t_sub.
         """
         cache_key = (node_key, t)
         if cache_key in self._evaluation_cache:
             return self._evaluation_cache[cache_key]
 
-        # Parse node_key into (splineName, channelName)
-        spline_name, channel_name = node_key.split('.', 1)
-        spline = self.splines[spline_name]
-        channel = spline.channels[channel_name]
+        # Parse node_key into (groupName, splineName)
+        group_name, spline_name = node_key.split('.', 1)
+        group = self.spline_groups[group_name]
+        spline = group.splines[spline_name]
 
-        # Create a channel lookup function for expression evaluation
-        def channel_lookup(sub_chan_name, sub_t):
-            """Helper function that uses _evaluate_channel_at_time to get dependencies at sub_t."""
-            # Always require fully qualified names for cross-channel references
+        # Create a spline lookup function for expression evaluation
+        def spline_lookup(sub_spline_name, sub_t):
+            """Helper function that uses _evaluate_spline_at_time to get dependencies at sub_t."""
+            # Always require fully qualified names for cross-spline references
             # Special cases: built-in variables and solver-level variables
-            if sub_chan_name == 't':
+            if sub_spline_name == 't':
                 return sub_t
-            elif sub_chan_name in self.variables:
+            elif sub_spline_name in self.variables:
                 # Allow access to solver-level variables without qualification
-                return self.variables[sub_chan_name]
+                return self.variables[sub_spline_name]
                 
-            if '.' not in sub_chan_name:
+            if '.' not in sub_spline_name:
                 # This is an unqualified name (e.g., "x"), which is no longer allowed
-                # First, try to find if any channels with this name are published to this target
-                matching_published_channels = []
+                # First, try to find if any splines with this name are published to this target
+                matching_published_splines = []
                 
                 # Check solver-level publish directives
                 for source, targets in self.publish.items():
-                    source_spline, source_channel = source.split('.', 1)
-                    if source_channel == sub_chan_name:
-                        channel_path = f"{spline_name}.{channel_name}"
+                    source_group, source_spline = source.split('.', 1)
+                    if source_spline == sub_spline_name:
+                        spline_path = f"{group_name}.{spline_name}"
                         can_access = (
                             "*" in targets or
-                            channel_path in targets or
-                            any(target.endswith(".*") and channel_path.startswith(target[:-1]) for target in targets)
+                            spline_path in targets or
+                            any(target.endswith(".*") and spline_path.startswith(target[:-1]) for target in targets)
                         )
                         if can_access:
-                            matching_published_channels.append(source)
+                            matching_published_splines.append(source)
                 
-                # Check channel-level publish directives
-                for other_spline_name, other_spline in self.splines.items():
-                    for other_channel_name, other_channel in other_spline.channels.items():
-                        if other_channel_name != sub_chan_name:
+                # Check spline-level publish directives
+                for other_group_name, other_group in self.spline_groups.items():
+                    for other_spline_name, other_spline in other_group.splines.items():
+                        if other_spline_name != sub_spline_name:
                             continue
                         
-                        if not hasattr(other_channel, 'publish') or not other_channel.publish:
+                        if not hasattr(other_spline, 'publish') or not other_spline.publish:
                             continue
                         
-                        target_path = f"{spline_name}.{channel_name}"
+                        target_path = f"{group_name}.{spline_name}"
                         can_access = (
-                            "*" in other_channel.publish or
-                            target_path in other_channel.publish or
+                            "*" in other_spline.publish or
+                            target_path in other_spline.publish or
                             any(pattern.endswith(".*") and target_path.startswith(pattern[:-1]) 
-                                for pattern in other_channel.publish)
+                                for pattern in other_spline.publish)
                         )
                         
                         if can_access:
-                            matching_published_channels.append(f"{other_spline_name}.{other_channel_name}")
+                            matching_published_splines.append(f"{other_group_name}.{other_spline_name}")
                 
-                # Check if a local channel with this name exists in this spline
-                local_channel_exists = (
-                    spline_name in self.splines and 
-                    sub_chan_name in self.splines[spline_name].channels
+                # Check if a local spline with this name exists in this group
+                local_spline_exists = (
+                    group_name in self.spline_groups and 
+                    sub_spline_name in self.spline_groups[group_name].splines
                 )
                 
                 # Provide a helpful error message based on what's available
-                if local_channel_exists:
-                    # Suggest the local channel
-                    suggestions = [f"{spline_name}.{sub_chan_name}"]
-                    if matching_published_channels:
-                        suggestions.extend(matching_published_channels)
+                if local_spline_exists:
+                    # Suggest the local spline
+                    suggestions = [f"{group_name}.{sub_spline_name}"]
+                    if matching_published_splines:
+                        suggestions.extend(matching_published_splines)
                     
                     raise ValueError(
-                        f"Unqualified channel reference '{sub_chan_name}' is not allowed. "
+                        f"Unqualified spline reference '{sub_spline_name}' is not allowed. "
                         f"Use a fully qualified name such as: {', '.join(suggestions)}"
                     )
-                elif matching_published_channels:
-                    # Suggest the published channels
-                    channels_str = ", ".join(matching_published_channels)
+                elif matching_published_splines:
+                    # Suggest the published splines
+                    splines_str = ", ".join(matching_published_splines)
                     raise ValueError(
-                        f"Unqualified channel reference '{sub_chan_name}' is not allowed. "
-                        f"Use a fully qualified name such as: {channels_str}"
+                        f"Unqualified spline reference '{sub_spline_name}' is not allowed. "
+                        f"Use a fully qualified name such as: {splines_str}"
                     )
                 else:
-                    # No matching channels found
+                    # No matching splines found
                     raise ValueError(
-                        f"Unqualified channel reference '{sub_chan_name}' is not allowed. "
-                        f"Use a fully qualified name in the format 'spline.channel'."
+                        f"Unqualified spline reference '{sub_spline_name}' is not allowed. "
+                        f"Use a fully qualified name in the format 'group.spline'."
                     )
             else:
                 # This is a fully qualified reference (e.g., "position.x")
-                sub_node_key = sub_chan_name
+                sub_node_key = sub_spline_name
             
             # Check if the node key exists before evaluating
-            spline_part, channel_part = sub_node_key.split('.', 1)
-            if spline_part in self.splines and channel_part in self.splines[spline_part].channels:
-                return self._evaluate_channel_at_time(sub_node_key, sub_t, external_channels)
+            spline_part, spline_part = sub_node_key.split('.', 1)
+            if spline_part in self.spline_groups and spline_part in self.spline_groups[spline_part].splines:
+                return self._evaluate_spline_at_time(sub_node_key, sub_t, external_splines)
             else:
-                # If the specified spline.channel doesn't exist, return 0
+                # If the specified group.spline doesn't exist, return 0
                 return 0
 
-        # Prepare variable context for channel evaluation
+        # Prepare variable context for spline evaluation
         combined_vars = {}
-        # Add external_channels
-        if external_channels:
-            combined_vars.update(external_channels)
+        # Add external_splines
+        if external_splines:
+            combined_vars.update(external_splines)
         # Add solver-level variables
         combined_vars.update(self.variables)
-        # Add the channel lookup function for cross-channel references
-        combined_vars['__channel_lookup__'] = channel_lookup
+        # Add the spline lookup function for cross-spline references
+        combined_vars['__spline_lookup__'] = spline_lookup
 
-        # Evaluate the channel with the combined variables
-        val = channel.get_value(t, combined_vars)
+        # Evaluate the spline with the combined variables
+        val = spline.get_value(t, combined_vars)
 
         # Store in cache
         self._evaluation_cache[cache_key] = val
         return val
 
-    def solve(self, position: Union[float, List[float]], external_channels: Optional[Dict[str, Any]] = None, method: str = "topo") -> Union[Dict[str, Dict[str, Any]], List[Dict[str, Dict[str, Any]]]]:
-        """Solve all splines at one or more positions using topological ordering by default.
+    def solve(self, position: Union[float, List[float]], external_splines: Optional[Dict[str, Any]] = None, method: str = "topo") -> Union[Dict[str, Dict[str, Any]], List[Dict[str, Dict[str, Any]]]]:
+        """Solve all spline groups at one or more positions using topological ordering by default.
         
         Args:
             position: The position to solve at, either a single float or a list of floats
-            external_channels: Optional external channel values
+            external_splines: Optional external spline values
             method: Solver method ('topo' or 'ondemand', default: 'topo')
             
         Returns:
             If position is a float:
-                A dictionary of spline names to channel value dictionaries
+                A dictionary of group names to spline value dictionaries
             If position is a list of floats:
-                A list of dictionaries, each mapping spline names to channel value dictionaries
+                A list of dictionaries, each mapping group names to spline value dictionaries
                 
         Raises:
             TypeError: If position is neither a float nor a list of floats
@@ -454,7 +509,7 @@ class KeyframeSolver:
             if not all(isinstance(pos, (int, float)) for pos in position):
                 raise TypeError("When position is a list, all elements must be numbers")
             # Apply solve to each position (we can optimize this implementation in the future)
-            return [self.solve(pos, external_channels, method) for pos in position]
+            return [self.solve(pos, external_splines, method) for pos in position]
             
         # From here on, position should be a single float
         if not isinstance(position, (int, float)):
@@ -462,7 +517,7 @@ class KeyframeSolver:
             
         # Allow specifying the solver method
         if method == "ondemand":
-            return self.solve_on_demand(position, external_channels)
+            return self.solve_on_demand(position, external_splines)
         
         # Use topological ordering by default
         # Build or reuse graph
@@ -473,7 +528,7 @@ class KeyframeSolver:
             except ValueError as e:
                 # If there's a cycle, fall back to on-demand method
                 print(f"Warning: {e}. Falling back to on-demand evaluation.")
-                return self.solve_on_demand(position, external_channels)
+                return self.solve_on_demand(position, external_splines)
 
         # Clear evaluation cache for this solve
         self._evaluation_cache = {}
@@ -483,41 +538,41 @@ class KeyframeSolver:
 
         # Evaluate in topological order
         result_by_node = {}
-        external_channels = external_channels or {}
+        external_splines = external_splines or {}
 
         for node in self._topo_order:
-            val = self._evaluate_channel_at_time(node, normalized_t, external_channels)
+            val = self._evaluate_spline_at_time(node, normalized_t, external_splines)
             result_by_node[node] = val
 
-        # Initialize the output with all splines and channels, ensuring every channel is in the result
+        # Initialize the output with all groups and splines, ensuring every spline is in the result
         out = {}
-        for spline_name, spline in self.splines.items():
-            if spline_name not in out:
-                out[spline_name] = {}
-            for channel_name in spline.channels:
-                # Create an entry for every channel in every spline
-                node_key = f"{spline_name}.{channel_name}"
+        for group_name, group in self.spline_groups.items():
+            if group_name not in out:
+                out[group_name] = {}
+            for spline_name in group.splines:
+                # Create an entry for every spline in every group
+                node_key = f"{group_name}.{spline_name}"
                 if node_key in result_by_node:
-                    out[spline_name][channel_name] = result_by_node[node_key]
+                    out[group_name][spline_name] = result_by_node[node_key]
                 else:
-                    # If the channel wasn't evaluated in the topological sort, evaluate it now
-                    val = self._evaluate_channel_at_time(node_key, normalized_t, external_channels)
-                    out[spline_name][channel_name] = val
+                    # If the spline wasn't evaluated in the topological sort, evaluate it now
+                    val = self._evaluate_spline_at_time(node_key, normalized_t, external_splines)
+                    out[group_name][spline_name] = val
 
         return out
 
-    def solve_on_demand(self, position: Union[float, List[float]], external_channels: Optional[Dict[str, Any]] = None) -> Union[Dict[str, Dict[str, Any]], List[Dict[str, Dict[str, Any]]]]:
-        """Solve all splines at one or more positions using the original on-demand method.
+    def solve_on_demand(self, position: Union[float, List[float]], external_splines: Optional[Dict[str, Any]] = None) -> Union[Dict[str, Dict[str, Any]], List[Dict[str, Dict[str, Any]]]]:
+        """Solve all spline groups at one or more positions using the original on-demand method.
         
         Args:
             position: The position to solve at, either a single float or a list of floats
-            external_channels: Optional external channel values
+            external_splines: Optional external spline values
             
         Returns:
             If position is a float:
-                A dictionary of spline names to channel value dictionaries
+                A dictionary of group names to spline value dictionaries
             If position is a list of floats:
-                A list of dictionaries, each mapping spline names to channel value dictionaries
+                A list of dictionaries, each mapping group names to spline value dictionaries
                 
         Raises:
             TypeError: If position is neither a float nor a list of floats
@@ -528,7 +583,7 @@ class KeyframeSolver:
             if not all(isinstance(pos, (int, float)) for pos in position):
                 raise TypeError("When position is a list, all elements must be numbers")
             # Apply solve to each position
-            return [self.solve_on_demand(pos, external_channels) for pos in position]
+            return [self.solve_on_demand(pos, external_splines) for pos in position]
             
         # From here on, position should be a single float
         if not isinstance(position, (int, float)):
@@ -539,142 +594,142 @@ class KeyframeSolver:
         # Apply range normalization if needed
         normalized_position = self._normalize_position(position)
             
-        # First pass: calculate channel values without expressions that might depend on other channels
-        channel_values = {}
+        # First pass: calculate spline values without expressions that might depend on other splines
+        spline_values = {}
         
-        # Initialize result structure with all splines and channels
-        for spline_name, spline in self.splines.items():
-            if spline_name not in result:
-                result[spline_name] = {}
+        # Initialize result structure with all groups and splines
+        for group_name, group in self.spline_groups.items():
+            if group_name not in result:
+                result[group_name] = {}
         
-        # First pass: evaluate channels without expressions
-        for spline_name, spline in self.splines.items():
-            for channel_name, channel in spline.channels.items():
-                # For simple numeric keyframes, evaluate them first
-                if all(not isinstance(kf.value, str) and not hasattr(kf.value, '__splinaltap_expr__') for kf in channel.keyframes):
-                    # Combine variables with external channels for non-expression evaluation
-                    combined_channels = {}
-                    if external_channels:
-                        combined_channels.update(external_channels)
-                    combined_channels.update(self.variables)
+        # First pass: evaluate splines without expressions
+        for group_name, group in self.spline_groups.items():
+            for spline_name, spline in group.splines.items():
+                # For simple numeric knots, evaluate them first
+                if all(not isinstance(knot.value, str) and not hasattr(knot.value, '__splinaltap_expr__') for knot in spline.knots):
+                    # Combine variables with external splines for non-expression evaluation
+                    combined_splines = {}
+                    if external_splines:
+                        combined_splines.update(external_splines)
+                    combined_splines.update(self.variables)
                     
-                    # Evaluate the channel at the normalized position
-                    value = channel.get_value(normalized_position, combined_channels)
-                    result[spline_name][channel_name] = value
+                    # Evaluate the spline at the normalized position
+                    value = spline.get_value(normalized_position, combined_splines)
+                    result[group_name][spline_name] = value
                     
-                    # Store the channel value for expression evaluation
-                    channel_values[f"{spline_name}.{channel_name}"] = value
+                    # Store the spline value for expression evaluation
+                    spline_values[f"{group_name}.{spline_name}"] = value
         
-        # Second pass: evaluate channels with expressions that might depend on other channels
-        for spline_name, spline in self.splines.items():                
-            for channel_name, channel in spline.channels.items():
-                # Skip channels already evaluated in the first pass
-                if channel_name in result[spline_name]:
+        # Second pass: evaluate splines with expressions that might depend on other splines
+        for group_name, group in self.spline_groups.items():                
+            for spline_name, spline in group.splines.items():
+                # Skip splines already evaluated in the first pass
+                if spline_name in result[group_name]:
                     continue
                     
-                # Create an accessible channels dictionary based on publish rules
-                accessible_channels = {}
+                # Create an accessible splines dictionary based on publish rules
+                accessible_splines = {}
                 
-                # Add external channels
-                if external_channels:
-                    accessible_channels.update(external_channels)
+                # Add external splines
+                if external_splines:
+                    accessible_splines.update(external_splines)
                     
                 # Add solver variables
-                accessible_channels.update(self.variables)
+                accessible_splines.update(self.variables)
                 
-                # Add channels from the same spline (always accessible)
-                for ch_name, ch_value in result.get(spline_name, {}).items():
-                    accessible_channels[ch_name] = ch_value
+                # Add splines from the same group (always accessible)
+                for sp_name, sp_value in result.get(group_name, {}).items():
+                    accessible_splines[sp_name] = sp_value
                 
-                # Add published channels
+                # Add published splines
                 for source, targets in self.publish.items():
-                    # Check if this channel can access the published channel
-                    channel_path = f"{spline_name}.{channel_name}"
+                    # Check if this spline can access the published spline
+                    spline_path = f"{group_name}.{spline_name}"
                     can_access = False
                     
                     # Check for global access with "*"
                     if "*" in targets:
                         can_access = True
                     # Check for specific access
-                    elif channel_path in targets:
+                    elif spline_path in targets:
                         can_access = True
-                    # Check for spline-level access (spline.*)
-                    elif any(target.endswith(".*") and channel_path.startswith(target[:-1]) for target in targets):
+                    # Check for group-level access (group.*)
+                    elif any(target.endswith(".*") and spline_path.startswith(target[:-1]) for target in targets):
                         can_access = True
                         
-                    if can_access and source in channel_values:
-                        # Extract just the channel name for easier access in expressions
+                    if can_access and source in spline_values:
+                        # Extract just the spline name for easier access in expressions
                         source_parts = source.split(".")
                         if len(source_parts) == 2:
-                            # Make the channel value accessible using the full path and just the channel name
-                            accessible_channels[source] = channel_values[source]
-                            accessible_channels[source_parts[1]] = channel_values[source]
+                            # Make the spline value accessible using the full path and just the spline name
+                            accessible_splines[source] = spline_values[source]
+                            accessible_splines[source_parts[1]] = spline_values[source]
                 
-                # Check channel-level publish list
-                for other_spline_name, other_spline in self.splines.items():
-                    for other_channel_name, other_channel in other_spline.channels.items():
-                        if hasattr(other_channel, 'publish') and other_channel.publish:
-                            source_path = f"{other_spline_name}.{other_channel_name}"
-                            target_path = f"{spline_name}.{channel_name}"
+                # Check spline-level publish list
+                for other_group_name, other_group in self.spline_groups.items():
+                    for other_spline_name, other_spline in other_group.splines.items():
+                        if hasattr(other_spline, 'publish') and other_spline.publish:
+                            source_path = f"{other_group_name}.{other_spline_name}"
+                            target_path = f"{group_name}.{spline_name}"
                             
-                            # Check if this channel is in the publish list using different matching patterns
+                            # Check if this spline is in the publish list using different matching patterns
                             can_access = False
                             
                             # Check for direct exact match
-                            if target_path in other_channel.publish:
+                            if target_path in other_spline.publish:
                                 can_access = True
                             # Check for global "*" wildcard access
-                            elif "*" in other_channel.publish:
+                            elif "*" in other_spline.publish:
                                 can_access = True
-                            # Check for spline-level wildcard "spline.*" access
-                            elif any(pattern.endswith(".*") and target_path.startswith(pattern[:-1]) for pattern in other_channel.publish):
+                            # Check for group-level wildcard "group.*" access
+                            elif any(pattern.endswith(".*") and target_path.startswith(pattern[:-1]) for pattern in other_spline.publish):
                                 can_access = True
                                 
-                            if can_access and source_path in channel_values:
-                                # If the other channel has been evaluated, make it accessible
-                                accessible_channels[source_path] = channel_values[source_path]
-                                # Also make it accessible by just the channel name
-                                accessible_channels[other_channel_name] = channel_values[source_path]
+                            if can_access and source_path in spline_values:
+                                # If the other spline has been evaluated, make it accessible
+                                accessible_splines[source_path] = spline_values[source_path]
+                                # Also make it accessible by just the spline name
+                                accessible_splines[other_spline_name] = spline_values[source_path]
                 
-                # Set up channel lookup function to handle references to published channels that weren't processed yet
-                def channel_lookup(sub_chan_name, sub_t):
-                    """Helper function to look up channel values."""
-                    if sub_chan_name in accessible_channels:
-                        return accessible_channels[sub_chan_name]
-                    elif sub_chan_name == 't':
+                # Set up spline lookup function to handle references to published splines that weren't processed yet
+                def spline_lookup(sub_spline_name, sub_t):
+                    """Helper function to look up spline values."""
+                    if sub_spline_name in accessible_splines:
+                        return accessible_splines[sub_spline_name]
+                    elif sub_spline_name == 't':
                         return sub_t
-                    elif sub_chan_name in self.variables:
-                        return self.variables[sub_chan_name]
-                    elif '.' in sub_chan_name:
+                    elif sub_spline_name in self.variables:
+                        return self.variables[sub_spline_name]
+                    elif '.' in sub_spline_name:
                         # Handle fully qualified reference
                         try:
-                            ref_spline_name, ref_channel_name = sub_chan_name.split('.', 1)
-                            ref_channel = self.splines[ref_spline_name].channels[ref_channel_name]
-                            return ref_channel.get_value(normalized_position, accessible_channels)
+                            ref_group_name, ref_spline_name = sub_spline_name.split('.', 1)
+                            ref_spline = self.spline_groups[ref_group_name].splines[ref_spline_name]
+                            return ref_spline.get_value(normalized_position, accessible_splines)
                         except (KeyError, ValueError):
                             return 0
                     else:
                         # Unqualified references should have been caught by validation
                         return 0
                 
-                # Add channel lookup function to accessible channels
-                accessible_channels['__channel_lookup__'] = channel_lookup
+                # Add spline lookup function to accessible splines
+                accessible_splines['__spline_lookup__'] = spline_lookup
                 
-                # Evaluate the channel with the accessible channels
-                value = channel.get_value(normalized_position, accessible_channels)
-                result[spline_name][channel_name] = value
+                # Evaluate the spline with the accessible splines
+                value = spline.get_value(normalized_position, accessible_splines)
+                result[group_name][spline_name] = value
                 
-                # Store the value for later channel access
-                channel_values[f"{spline_name}.{channel_name}"] = value
+                # Store the value for later spline access
+                spline_values[f"{group_name}.{spline_name}"] = value
         
         return result
         
-    def solve_multiple(self, positions: List[float], external_channels: Optional[Dict[str, Any]] = None, method: str = "topo") -> List[Dict[str, Dict[str, Any]]]:
-        """Solve all splines at multiple positions.
+    def solve_multiple(self, positions: List[float], external_splines: Optional[Dict[str, Any]] = None, method: str = "topo") -> List[Dict[str, Dict[str, Any]]]:
+        """Solve all spline groups at multiple positions.
         
         Args:
             positions: List of positions to solve at
-            external_channels: Optional external channel values
+            external_splines: Optional external spline values
             method: Solver method ('topo' or 'ondemand', default: 'topo')
             
         Returns:
@@ -685,29 +740,29 @@ class KeyframeSolver:
             Using solve() directly with a list of positions is now possible and preferred.
         """
         # Simply delegate to the solve method, which now supports lists of positions
-        return self.solve(positions, external_channels, method=method)
+        return self.solve(positions, external_splines, method=method)
         
     def get_plot(
         self, 
         samples: Optional[int] = None, 
-        filter_channels: Optional[Dict[str, List[str]]] = None, 
+        filter_splines: Optional[Dict[str, List[str]]] = None, 
         theme: str = "dark",
         save_path: Optional[str] = None,
         overlay: bool = True,
         width: Optional[float] = None,
         height: Optional[float] = None
     ) -> 'matplotlib.figure.Figure':
-        """Generate a plot for the solver's splines and channels.
+        """Generate a plot for the solver's spline groups and splines.
         
         Args:
             samples: Number of evenly spaced samples to use (defaults to 100)
-            filter_channels: Optional dictionary mapping spline names to lists of channel names to include
-                            (e.g., {'position': ['x', 'y'], 'rotation': ['angle']})
+            filter_splines: Optional dictionary mapping group names to lists of spline names to include
+                           (e.g., {'position': ['x', 'y'], 'rotation': ['angle']})
             theme: Plot theme - 'light' or 'dark'
             save_path: Optional file path to save the plot (e.g., 'plot.png')
-            overlay: If True, all splines are plotted in a single graph; if False, each spline gets its own subplot
+            overlay: If True, all groups are plotted in a single graph; if False, each group gets its own subplot
             width: Optional figure width in inches (defaults to 12)
-            height: Optional figure height in inches (defaults to 8 if overlay=True, 4*num_splines if overlay=False)
+            height: Optional figure height in inches (defaults to 8 if overlay=True, 4*num_groups if overlay=False)
 
         Returns:
             The matplotlib figure
@@ -728,14 +783,14 @@ class KeyframeSolver:
         # Generate sample positions
         positions = [i / (samples - 1) for i in range(samples)]
         
-        # If no filter is provided, include all splines and channels
-        if filter_channels is None:
-            filter_channels = {}
-            for spline_name in self.splines:
-                filter_channels[spline_name] = list(self.splines[spline_name].channels.keys())
+        # If no filter is provided, include all groups and splines
+        if filter_splines is None:
+            filter_splines = {}
+            for group_name in self.spline_groups:
+                filter_splines[group_name] = list(self.spline_groups[group_name].splines.keys())
                 
-        # Determine the number of splines to plot
-        num_splines = len(filter_channels)
+        # Determine the number of groups to plot
+        num_groups = len(filter_splines)
         
         # Set theme first before creating any plots
         if theme == "dark":
@@ -799,66 +854,66 @@ class KeyframeSolver:
                 'patch.edgecolor': '#cccccc'
             })
             
-        # Evaluate all channels at the sample positions
+        # Evaluate all splines at the sample positions
         results = []
         for position in positions:
             results.append(self.solve(position))
         
         if overlay:
-            # Create a single figure for all splines/channels
+            # Create a single figure for all groups/splines
             figure_width = width or 12
             figure_height = height or 8
             fig = plt.figure(figsize=(figure_width, figure_height))
             ax = fig.add_subplot(111)
             
-            # Used to track all channel names for a combined legend
+            # Used to track all spline names for a combined legend
             all_lines = []
             all_labels = []
             
-            # Keep track of color index across all splines
+            # Keep track of color index across all groups
             color_index = 0
             
-            # Plot all splines and channels on the same axis
-            for spline_name, channel_names in filter_channels.items():
-                if spline_name not in self.splines:
+            # Plot all groups and splines on the same axis
+            for group_name, spline_names in filter_splines.items():
+                if group_name not in self.spline_groups:
                     continue
                     
-                # Extract channel values at each sample position
-                for channel_name in channel_names:
-                    if channel_name in self.splines[spline_name].channels:
+                # Extract spline values at each sample position
+                for spline_name in spline_names:
+                    if spline_name in self.spline_groups[group_name].splines:
                         values = []
                         for j, position in enumerate(positions):
-                            if spline_name in results[j] and channel_name in results[j][spline_name]:
-                                values.append(results[j][spline_name][channel_name])
+                            if group_name in results[j] and spline_name in results[j][group_name]:
+                                values.append(results[j][group_name][spline_name])
                             else:
-                                # If channel isn't in result, use 0 or the previous value
+                                # If spline isn't in result, use 0 or the previous value
                                 prev_value = values[-1] if values else 0
                                 values.append(prev_value)
                         
-                        # Plot this channel with a unique color
+                        # Plot this spline with a unique color
                         color = color_palette[color_index % len(color_palette)]
                         color_index += 1
                         
-                        # Create full label with spline and channel name
-                        full_label = f"{spline_name}.{channel_name}"
+                        # Create full label with group and spline name
+                        full_label = f"{group_name}.{spline_name}"
                         line, = ax.plot(positions, values, label=full_label, color=color, linewidth=2)
                         all_lines.append(line)
                         all_labels.append(full_label)
                         
-                        # Add keyframe markers
-                        channel = self.splines[spline_name].channels[channel_name]
-                        keyframe_positions = [kf.at for kf in channel.keyframes]
-                        keyframe_values = []
-                        for pos in keyframe_positions:
-                            # Get the value at this keyframe position
+                        # Add knot markers
+                        spline = self.spline_groups[group_name].splines[spline_name]
+                        knot_positions = [knot.at for knot in spline.knots]
+                        knot_values = []
+                        for pos in knot_positions:
+                            # Get the value at this knot position
                             normal_pos = self._normalize_position(pos)
                             result = self.solve(normal_pos)
-                            if spline_name in result and channel_name in result[spline_name]:
-                                keyframe_values.append(result[spline_name][channel_name])
+                            if group_name in result and spline_name in result[group_name]:
+                                knot_values.append(result[group_name][spline_name])
                             else:
-                                keyframe_values.append(0)  # Fallback
+                                knot_values.append(0)  # Fallback
                                 
-                        ax.scatter(keyframe_positions, keyframe_values, color=color, s=60, zorder=5)
+                        ax.scatter(knot_positions, knot_values, color=color, s=60, zorder=5)
             
             # Set labels and title for the single plot
             ax.set_xlabel('Position')
@@ -868,7 +923,7 @@ class KeyframeSolver:
             # Add grid
             ax.grid(True, linestyle='--', alpha=0.7, color=grid_color)
             
-            # Add legend with all channels
+            # Add legend with all splines
             if theme == "dark":
                 ax.legend(facecolor='#121212', edgecolor='#444444', labelcolor='white')
             elif theme == "medium":
@@ -880,15 +935,15 @@ class KeyframeSolver:
             ax.set_xlim(0, 1)
             
         else:
-            # Create a figure with separate subplots for each spline (original behavior)
+            # Create a figure with separate subplots for each group (original behavior)
             figure_width = width or 12
-            figure_height = height or (4 * num_splines)
+            figure_height = height or (4 * num_groups)
             fig = plt.figure(figsize=(figure_width, figure_height))
-            gs = GridSpec(num_splines, 1, figure=fig)
+            gs = GridSpec(num_groups, 1, figure=fig)
             
-            # Plot each spline in its own subplot
-            for i, (spline_name, channel_names) in enumerate(filter_channels.items()):
-                if spline_name not in self.splines:
+            # Plot each group in its own subplot
+            for i, (group_name, spline_names) in enumerate(filter_splines.items()):
+                if group_name not in self.spline_groups:
                     continue
                     
                 # Create subplot
@@ -899,40 +954,40 @@ class KeyframeSolver:
                     ax.set_facecolor('#121212')
                 
                 # Set subplot title
-                ax.set_title(f"Spline: {spline_name}")
+                ax.set_title(f"Group: {group_name}")
                 
-                # Extract channel values at each sample position
-                channel_values = {}
-                for channel_name in channel_names:
-                    if channel_name in self.splines[spline_name].channels:
-                        channel_values[channel_name] = []
+                # Extract spline values at each sample position
+                spline_values = {}
+                for spline_name in spline_names:
+                    if spline_name in self.spline_groups[group_name].splines:
+                        spline_values[spline_name] = []
                         for j, position in enumerate(positions):
-                            if spline_name in results[j] and channel_name in results[j][spline_name]:
-                                channel_values[channel_name].append(results[j][spline_name][channel_name])
+                            if group_name in results[j] and spline_name in results[j][group_name]:
+                                spline_values[spline_name].append(results[j][group_name][spline_name])
                             else:
-                                # If channel isn't in result, use 0 or the previous value
-                                prev_value = channel_values[channel_name][-1] if channel_values[channel_name] else 0
-                                channel_values[channel_name].append(prev_value)
+                                # If spline isn't in result, use 0 or the previous value
+                                prev_value = spline_values[spline_name][-1] if spline_values[spline_name] else 0
+                                spline_values[spline_name].append(prev_value)
                 
-                # Plot each channel
-                for j, (channel_name, values) in enumerate(channel_values.items()):
+                # Plot each spline
+                for j, (spline_name, values) in enumerate(spline_values.items()):
                     color = color_palette[j % len(color_palette)]
-                    ax.plot(positions, values, label=channel_name, color=color, linewidth=2)
+                    ax.plot(positions, values, label=spline_name, color=color, linewidth=2)
                     
-                    # Add markers at keyframe positions
-                    channel = self.splines[spline_name].channels[channel_name]
-                    keyframe_positions = [kf.at for kf in channel.keyframes]
-                    keyframe_values = []
-                    for pos in keyframe_positions:
-                        # Get the value at this keyframe position
+                    # Add markers at knot positions
+                    spline = self.spline_groups[group_name].splines[spline_name]
+                    knot_positions = [knot.at for knot in spline.knots]
+                    knot_values = []
+                    for pos in knot_positions:
+                        # Get the value at this knot position
                         normal_pos = self._normalize_position(pos)
                         result = self.solve(normal_pos)
-                        if spline_name in result and channel_name in result[spline_name]:
-                            keyframe_values.append(result[spline_name][channel_name])
+                        if group_name in result and spline_name in result[group_name]:
+                            knot_values.append(result[group_name][spline_name])
                         else:
-                            keyframe_values.append(0)  # Fallback
+                            knot_values.append(0)  # Fallback
                             
-                    ax.scatter(keyframe_positions, keyframe_values, color=color, s=60, zorder=5)
+                    ax.scatter(knot_positions, knot_values, color=color, s=60, zorder=5)
                 
                 # Set labels
                 ax.set_xlabel('Position')
@@ -971,49 +1026,49 @@ class KeyframeSolver:
         self,
         filepath: str,
         samples: Optional[int] = None,
-        filter_channels: Optional[Dict[str, List[str]]] = None,
+        filter_splines: Optional[Dict[str, List[str]]] = None,
         theme: str = "dark",
         overlay: bool = True,
         width: Optional[float] = None,
         height: Optional[float] = None
     ) -> None:
-        """Save a plot of the solver's splines and channels to a file.
+        """Save a plot of the solver's spline groups and splines to a file.
         
         Args:
             filepath: The file path to save the plot to (e.g., 'plot.png')
             samples: Number of evenly spaced samples to use (defaults to 100)
-            filter_channels: Optional dictionary mapping spline names to lists of channel names to include
+            filter_splines: Optional dictionary mapping group names to lists of spline names to include
             theme: Plot theme - 'light' or 'dark'
-            overlay: If True, all splines are plotted in a single graph; if False, each spline gets its own subplot
+            overlay: If True, all groups are plotted in a single graph; if False, each group gets its own subplot
             width: Optional figure width in inches (defaults to 12)
-            height: Optional figure height in inches (defaults to 8 if overlay=True, 4*num_splines if overlay=False)
+            height: Optional figure height in inches (defaults to 8 if overlay=True, 4*num_groups if overlay=False)
             
         Raises:
             ImportError: If matplotlib is not available
         """
         # Get the plot and save it
-        self.get_plot(samples, filter_channels, theme, save_path=filepath, overlay=overlay, width=width, height=height)
+        self.get_plot(samples, filter_splines, theme, save_path=filepath, overlay=overlay, width=width, height=height)
     
     def plot(
         self, 
         samples: Optional[int] = None, 
-        filter_channels: Optional[Dict[str, List[str]]] = None, 
+        filter_splines: Optional[Dict[str, List[str]]] = None, 
         theme: str = "dark",
         save_path: Optional[str] = None,
         overlay: bool = True,
         width: Optional[float] = None,
         height: Optional[float] = None
     ):
-        """Plot the solver's splines and channels.
+        """Plot the solver's spline groups and splines.
         
         Args:
             samples: Number of evenly spaced samples to use (defaults to 100)
-            filter_channels: Optional dictionary mapping spline names to lists of channel names to include
+            filter_splines: Optional dictionary mapping group names to lists of spline names to include
             theme: Plot theme - 'light' or 'dark'
             save_path: Optional file path to save the plot (e.g., 'plot.png')
-            overlay: If True, all splines are plotted in a single graph; if False, each spline gets its own subplot
+            overlay: If True, all groups are plotted in a single graph; if False, each group gets its own subplot
             width: Optional figure width in inches (defaults to 12)
-            height: Optional figure height in inches (defaults to 8 if overlay=True, 4*num_splines if overlay=False)
+            height: Optional figure height in inches (defaults to 8 if overlay=True, 4*num_groups if overlay=False)
             
         Returns:
             None - displays the plot
@@ -1026,14 +1081,14 @@ class KeyframeSolver:
         except ImportError:
             raise ImportError("Plotting requires matplotlib. Install it with: pip install matplotlib")
             
-        fig = self.get_plot(samples, filter_channels, theme, save_path, overlay, width, height)
+        fig = self.get_plot(samples, filter_splines, theme, save_path, overlay, width, height)
         plt.show()
         return None
         
     def show(
             self, 
             samples: Optional[int] = None, 
-            filter_channels: Optional[Dict[str, List[str]]] = None, 
+            filter_splines: Optional[Dict[str, List[str]]] = None, 
             theme: str = "dark",
             save_path: Optional[str] = None,
             overlay: bool = True,
@@ -1044,14 +1099,14 @@ class KeyframeSolver:
         
         Args:
             samples: Number of evenly spaced samples to use (defaults to 100)
-            filter_channels: Optional dictionary mapping spline names to lists of channel names to include
+            filter_splines: Optional dictionary mapping group names to lists of spline names to include
             theme: Plot theme - 'light' or 'dark'
             save_path: Optional file path to save the plot (e.g., 'plot.png')
-            overlay: If True, all splines are plotted in a single graph; if False, each spline gets its own subplot
+            overlay: If True, all groups are plotted in a single graph; if False, each group gets its own subplot
             width: Optional figure width in inches (defaults to 12)
-            height: Optional figure height in inches (defaults to 8 if overlay=True, 4*num_splines if overlay=False)
+            height: Optional figure height in inches (defaults to 8 if overlay=True, 4*num_groups if overlay=False)
         """
-        self.plot(samples, filter_channels, theme, save_path, overlay, width, height)
+        self.plot(samples, filter_splines, theme, save_path, overlay, width, height)
     
     def save(self, filepath: str, format: Optional[str] = None) -> None:
         """Save the solver to a file.
@@ -1105,7 +1160,7 @@ class KeyframeSolver:
         """
         # Start with basic information
         data = {
-            "version": KEYFRAME_SOLVER_FORMAT_VERSION,  # Update version for new publish feature
+            "version": SPLINE_SOLVER_FORMAT_VERSION,
             "name": self.name,
             "metadata": self.metadata,
             "range": self.range,
@@ -1125,77 +1180,77 @@ class KeyframeSolver:
             else:
                 data["variables"][name] = value
         
-        # Add splines
-        data["splines"] = {}
-        for spline_name, spline in self.splines.items():
-            # Create a dictionary for this spline
-            spline_data = {
-                "channels": {}
+        # Add spline groups
+        data["spline_groups"] = {}
+        for group_name, group in self.spline_groups.items():
+            # Create a dictionary for this spline group
+            group_data = {
+                "splines": {}
             }
             
-            # Add channels
-            for channel_name, channel in spline.channels.items():
-                # Create a dictionary for this channel
-                channel_data = {
-                    "interpolation": channel.interpolation,
-                    "keyframes": []
+            # Add splines
+            for spline_name, spline in group.splines.items():
+                # Create a dictionary for this spline
+                spline_data = {
+                    "interpolation": spline.interpolation,
+                    "knots": []
                 }
                 
                 # Add min/max if set
-                if channel.min_max is not None:
-                    channel_data["min_max"] = channel.min_max
+                if spline.min_max is not None:
+                    spline_data["min_max"] = spline.min_max
                 
                 # Add publish list if present
-                if hasattr(channel, 'publish') and channel.publish:
-                    channel_data["publish"] = channel.publish
+                if hasattr(spline, 'publish') and spline.publish:
+                    spline_data["publish"] = spline.publish
                 
-                # Add keyframes
-                for keyframe in channel.keyframes:
-                    # Create a dictionary for this keyframe
+                # Add knots
+                for knot in spline.knots:
+                    # Create a dictionary for this knot
                     # Convert function values to strings to avoid serialization errors
-                    # We need to handle the fact that keyframe.value is a callable
+                    # We need to handle the fact that knot.value is a callable
                     # Let's try to convert it to a string representation if possible
                     value = None
                     
-                    if isinstance(keyframe.value, (int, float)):
-                        value = keyframe.value
-                    elif isinstance(keyframe.value, str):
-                        value = keyframe.value
+                    if isinstance(knot.value, (int, float)):
+                        value = knot.value
+                    elif isinstance(knot.value, str):
+                        value = knot.value
                     else:
                         # This is probably a callable, so we'll just use a string representation
                         value = "0"  # Default fallback
                     
-                    keyframe_data = {
-                        "@": keyframe.at,  # Use @ instead of position
+                    knot_data = {
+                        "@": knot.at,  # Use @ instead of position
                         "value": value
                     }
                     
-                    # Add interpolation if different from channel default
-                    if keyframe.interpolation is not None:
-                        keyframe_data["interpolation"] = keyframe.interpolation
+                    # Add interpolation if different from spline default
+                    if knot.interpolation is not None:
+                        knot_data["interpolation"] = knot.interpolation
                     
                     # Add parameters
                     params = {}
-                    if keyframe.derivative is not None:
-                        params["deriv"] = keyframe.derivative
-                    if keyframe.control_points is not None:
-                        params["cp"] = keyframe.control_points
+                    if knot.derivative is not None:
+                        params["deriv"] = knot.derivative
+                    if knot.control_points is not None:
+                        params["cp"] = knot.control_points
                     if params:
-                        keyframe_data["parameters"] = params
+                        knot_data["parameters"] = params
                     
-                    # Add this keyframe to the channel data
-                    channel_data["keyframes"].append(keyframe_data)
+                    # Add this knot to the spline data
+                    spline_data["knots"].append(knot_data)
                 
-                # Add this channel to the spline data
-                spline_data["channels"][channel_name] = channel_data
+                # Add this spline to the group data
+                group_data["splines"][spline_name] = spline_data
             
-            # Add this spline to the data
-            data["splines"][spline_name] = spline_data
+            # Add this group to the data
+            data["spline_groups"][group_name] = group_data
         
         return data
     
     @classmethod
-    def from_file(cls, filepath: str, format: Optional[str] = None) -> 'KeyframeSolver':
+    def from_file(cls, filepath: str, format: Optional[str] = None) -> 'SplineSolver':
         """Load a solver from a file.
         
         Args:
@@ -1243,7 +1298,7 @@ class KeyframeSolver:
         return cls._deserialize(solver_data)
     
    
-    def load(self, filepath: str, format: Optional[str] = None) -> 'KeyframeSolver':
+    def load(self, filepath: str, format: Optional[str] = None) -> 'SplineSolver':
         """Load a solver from a file.
             Updates the solver in place # not efficient with copy attrs
 
@@ -1273,7 +1328,7 @@ class KeyframeSolver:
         return self
     
     @classmethod
-    def _deserialize(cls, data: Dict[str, Any]) -> 'KeyframeSolver':
+    def _deserialize(cls, data: Dict[str, Any]) -> 'SplineSolver':
         """Deserialize a solver from a dictionary.
         
         Args:
@@ -1282,11 +1337,50 @@ class KeyframeSolver:
         Returns:
             The deserialized Solver
         """
-        # Check version - require version KeyframeSolverFormatVersion
+        # Check if it's a list (old format used in some tests)
+        if isinstance(data, list):
+            # Create a default solver with the test data
+            solver = cls(name="TestData")
+            # Create a default spline group
+            spline_group = solver.create_spline_group("default")
+            # Create a default spline
+            spline = spline_group.add_spline("value")
+            # Add knots from the list data
+            for i, value in enumerate(data):
+                spline.add_knot(at=i / (len(data) - 1) if len(data) > 1 else 0.5, value=value)
+            return solver
+            
+        # Check version - require version SplineSolverFormatVersion
         if "version" in data:
             file_version = data["version"]
-            if file_version != KEYFRAME_SOLVER_FORMAT_VERSION:
-                raise ValueError(f"Unsupported KeyframeSolver file version: {file_version}. Current version is {KEYFRAME_SOLVER_FORMAT_VERSION}.")
+            if file_version != SPLINE_SOLVER_FORMAT_VERSION:
+                # For backward compatibility with KeyframeSolver format
+                if file_version == "2.0" and "splines" in data:
+                    print(f"Converting from KeyframeSolver format to SplineSolver format")
+                    # This is the old format where splines are direct children of the solver
+                    # Convert to the new format where splines are grouped
+                    # Create a default spline group containing all splines
+                    default_group = {"splines": {}}
+                    
+                    # Copy each old spline to be a SplineGroup
+                    for spline_name, spline_data in data["splines"].items():
+                        # Add to the default group
+                        if "channels" in spline_data:
+                            # Convert channels to splines
+                            splines = {}
+                            for channel_name, channel_data in spline_data["channels"].items():
+                                # Rename keyframes to knots
+                                if "keyframes" in channel_data:
+                                    channel_data["knots"] = channel_data.pop("keyframes")
+                                splines[channel_name] = channel_data
+                            default_group["splines"][spline_name] = splines
+                    
+                    # Replace splines with spline_groups in the data
+                    data["spline_groups"] = {"default": default_group}
+                    # Remove the old splines entry
+                    del data["splines"]
+                else:
+                    raise ValueError(f"Unsupported SplineSolver file version: {file_version}. Current version is {SPLINE_SOLVER_FORMAT_VERSION}.")
         
         # Create a new solver
         solver = cls(name=data.get("name", "Untitled"))
@@ -1307,96 +1401,95 @@ class KeyframeSolver:
             for source, targets in data["publish"].items():
                 solver.publish[source] = targets
         
-        # Create splines
-        splines_data = data.get("splines", {})
+        # Handle old KeyframeSolver format where "splines" is used instead of "spline_groups"
+        groups_data = None
+        if "spline_groups" in data:
+            groups_data = data["spline_groups"]
+        elif "splines" in data:
+            # Convert old format
+            groups_data = {}
+            for spline_name, spline_data in data["splines"].items():
+                # Create a group data structure
+                group_data = {
+                    "splines": {}
+                }
+                
+                # Process the channels as splines
+                if "channels" in spline_data:
+                    for channel_name, channel_data in spline_data["channels"].items():
+                        # Create a spline data structure
+                        spline_data_new = {
+                            "interpolation": channel_data.get("interpolation", "cubic"),
+                            "knots": []
+                        }
+                        
+                        # Add min/max if set
+                        if "min_max" in channel_data:
+                            spline_data_new["min_max"] = channel_data["min_max"]
+                        
+                        # Add publish list if present
+                        if "publish" in channel_data:
+                            spline_data_new["publish"] = channel_data["publish"]
+                        
+                        # Convert keyframes to knots
+                        for keyframe_data in channel_data.get("keyframes", []):
+                            # Support both old "position" key and new "@" key
+                            knot_data = {
+                                "@": keyframe_data.get("@", keyframe_data.get("position", 0)),
+                                "value": keyframe_data.get("value", 0)
+                            }
+                            
+                            # Add interpolation if different from spline default
+                            if "interpolation" in keyframe_data:
+                                knot_data["interpolation"] = keyframe_data["interpolation"]
+                            
+                            # Add parameters
+                            if "parameters" in keyframe_data:
+                                knot_data["parameters"] = keyframe_data["parameters"]
+                            
+                            # Add this knot to the spline data
+                            spline_data_new["knots"].append(knot_data)
+                        
+                        # Add this spline to the group data
+                        group_data["splines"][channel_name] = spline_data_new
+                
+                # Add this group to the data
+                groups_data[spline_name] = group_data
         
-        # Handle both array and dictionary formats for splines
-        if isinstance(splines_data, list):
-            # Array format (each spline has a name field)
-            for spline_item in splines_data:
-                spline_name = spline_item.get("name", f"spline_{len(solver.splines)}")
-                spline = solver.create_spline(spline_name)
+        # Create spline groups
+        if groups_data:
+            # Process dictionary format - each group has a "splines" key
+            for group_name, group_data in groups_data.items():
+                # Create a new spline group
+                group = solver.create_spline_group(group_name)
                 
-                # Process channels
-                channels_data = spline_item.get("channels", [])
-                
-                # Handle channels as array
-                if isinstance(channels_data, list):
-                    for channel_item in channels_data:
-                        channel_name = channel_item.get("name", f"channel_{len(spline.channels)}")
-                        interpolation = channel_item.get("interpolation", "cubic")
-                        min_max = channel_item.get("min_max")
-                        publish = channel_item.get("publish")
+                # Process splines
+                if isinstance(group_data, dict) and "splines" in group_data:
+                    for spline_name, spline_data in group_data["splines"].items():
+                        # Create a spline
+                        interpolation = spline_data.get("interpolation", "cubic")
+                        min_max = spline_data.get("min_max")
+                        publish = spline_data.get("publish")
                         
                         # Convert list min_max to tuple (needed for test assertions)
                         if isinstance(min_max, list) and len(min_max) == 2:
                             min_max = tuple(min_max)
                         
-                        channel = spline.add_channel(
-                            name=channel_name,
+                        spline = group.add_spline(
+                            name=spline_name,
                             interpolation=interpolation,
                             min_max=min_max,
-                            replace=True,  # Add replace=True to handle duplicates
+                            replace=True,  # Replace existing spline if it exists
                             publish=publish
                         )
                         
-                        # Add keyframes
-                        keyframes_data = channel_item.get("keyframes", [])
-                        for kf_data in keyframes_data:
-                            # Handle keyframe as array [position, value] or as object
-                            if isinstance(kf_data, list):
-                                position = kf_data[0]
-                                value = kf_data[1]
-                                interp = None
-                                control_points = None
-                                derivative = None
-                            else:
-                                # Object format - only support "@" key for positions
-                                position = kf_data.get("@", 0)
-                                value = kf_data.get("value", 0)
-                                interp = kf_data.get("interpolation")
-                                params = kf_data.get("parameters", {})
-                                
-                                control_points = None
-                                derivative = None
-                                
-                                if params:
-                                    if "cp" in params:
-                                        control_points = params["cp"]
-                                    if "deriv" in params:
-                                        derivative = params["deriv"]
-                            
-                            channel.add_keyframe(
-                                at=position,
-                                value=value,
-                                interpolation=interp,
-                                control_points=control_points,
-                                derivative=derivative
-                            )
-                
-                # Handle channels as dictionary (backward compatibility)
-                elif isinstance(channels_data, dict):
-                    for channel_name, channel_data in channels_data.items():
-                        interpolation = channel_data.get("interpolation", "cubic")
-                        min_max = channel_data.get("min_max")
-                        
-                        # Convert list min_max to tuple (needed for test assertions)
-                        if isinstance(min_max, list) and len(min_max) == 2:
-                            min_max = tuple(min_max)
-                        
-                        channel = spline.add_channel(
-                            name=channel_name,
-                            interpolation=interpolation,
-                            min_max=min_max,
-                            replace=True  # Add replace=True to handle duplicates
-                        )
-                        
-                        # Add keyframes
-                        for keyframe_data in channel_data.get("keyframes", []):
-                            position = keyframe_data.get("position", 0)
-                            value = keyframe_data.get("value", 0)
-                            interp = keyframe_data.get("interpolation")
-                            params = keyframe_data.get("parameters", {})
+                        # Add knots
+                        for knot_data in spline_data.get("knots", []):
+                            # Support both old "position" key and new "@" key
+                            position = knot_data.get("@", knot_data.get("position", 0))
+                            value = knot_data.get("value", 0)
+                            interp = knot_data.get("interpolation")
+                            params = knot_data.get("parameters", {})
                             
                             control_points = None
                             derivative = None
@@ -1407,108 +1500,13 @@ class KeyframeSolver:
                                 if "deriv" in params:
                                     derivative = params["deriv"]
                             
-                            channel.add_keyframe(
+                            spline.add_knot(
                                 at=position,
                                 value=value,
                                 interpolation=interp,
                                 control_points=control_points,
                                 derivative=derivative
                             )
-        else:
-            # Dictionary format (backward compatibility)
-            for spline_name, spline_data in splines_data.items():
-                # Create a new spline
-                spline = solver.create_spline(spline_name)
-                
-                # Process the spline data
-                if isinstance(spline_data, dict):
-                    # Check if there's a 'channels' key in the spline data (new format)
-                    channels_data = spline_data.get("channels", {})
-                    
-                    # Process channels dictionary
-                    if channels_data:
-                        for channel_name, channel_data in channels_data.items():
-                            # Create a channel
-                            interpolation = channel_data.get("interpolation", "cubic")
-                            min_max = channel_data.get("min_max")
-                            publish = channel_data.get("publish")
-                            
-                            channel = spline.add_channel(
-                                name=channel_name,
-                                interpolation=interpolation,
-                                min_max=min_max,
-                                replace=True,  # Replace existing channel if it exists
-                                publish=publish
-                            )
-                            
-                            # Add keyframes
-                            for keyframe_data in channel_data.get("keyframes", []):
-                                # Support both old "position" key and new "@" key
-                                position = keyframe_data.get("@", keyframe_data.get("position", 0))
-                                value = keyframe_data.get("value", 0)
-                                interp = keyframe_data.get("interpolation")
-                                params = keyframe_data.get("parameters", {})
-                                
-                                control_points = None
-                                derivative = None
-                                
-                                if params:
-                                    if "cp" in params:
-                                        control_points = params["cp"]
-                                    if "deriv" in params:
-                                        derivative = params["deriv"]
-                                
-                                channel.add_keyframe(
-                                    at=position,
-                                    value=value,
-                                    interpolation=interp,
-                                    control_points=control_points,
-                                    derivative=derivative
-                                )
-                    else:
-                        # Legacy format - channels directly in spline
-                        for channel_name, channel_data in spline_data.items():
-                            if channel_name != "name":  # Skip name field
-                                # Create a channel
-                                interpolation = "cubic"
-                                min_max = None
-                                
-                                if isinstance(channel_data, dict):
-                                    interpolation = channel_data.get("interpolation", "cubic")
-                                    min_max = channel_data.get("min_max")
-                                
-                                channel = spline.add_channel(
-                                    name=channel_name,
-                                    interpolation=interpolation,
-                                    min_max=min_max,
-                                    replace=True  # Replace existing channel if it exists
-                                )
-                                
-                                # Add keyframes if available
-                                if isinstance(channel_data, dict) and "keyframes" in channel_data:
-                                    for keyframe_data in channel_data["keyframes"]:
-                                        # Support both old "position" key and new "@" key
-                                        position = keyframe_data.get("@", keyframe_data.get("position", 0))
-                                        value = keyframe_data.get("value", 0)
-                                        interp = keyframe_data.get("interpolation")
-                                        params = keyframe_data.get("parameters", {})
-                                        
-                                        control_points = None
-                                        derivative = None
-                                        
-                                        if params:
-                                            if "cp" in params:
-                                                control_points = params["cp"]
-                                            if "deriv" in params:
-                                                derivative = params["deriv"]
-                                        
-                                        channel.add_keyframe(
-                                            at=position,
-                                            value=value,
-                                            interpolation=interp,
-                                            control_points=control_points,
-                                            derivative=derivative
-                                        )
         
         return solver
         
@@ -1516,10 +1514,10 @@ class KeyframeSolver:
         """Create a deep copy of this solver.
         
         Returns:
-            A new KeyframeSolver with the same data
+            A new SplineSolver with the same data
         """
         # Create a new solver with the same name
-        copied_solver = KeyframeSolver(name=self.name)
+        copied_solver = SplineSolver(name=self.name)
         
         # Copy range
         copied_solver.range = self.range
@@ -1531,28 +1529,32 @@ class KeyframeSolver:
         for name, value in self.variables.items():
             copied_solver.set_variable(name, value)
         
-        # Copy splines and their channels/keyframes
-        for spline_name, spline in self.splines.items():
-            copied_spline = copied_solver.create_spline(spline_name)
+        # Copy spline groups and their splines/knots
+        for group_name, group in self.spline_groups.items():
+            copied_group = copied_solver.create_spline_group(group_name)
             
-            # Copy channels
-            for channel_name, channel in spline.channels.items():
-                # Create new channel with same properties
-                copied_channel = copied_spline.add_channel(
-                    name=channel_name,
-                    interpolation=channel.interpolation,
-                    min_max=channel.min_max,
-                    replace=True  # Add replace parameter
+            # Copy splines
+            for spline_name, spline in group.splines.items():
+                # Create new spline with same properties
+                copied_spline = copied_group.add_spline(
+                    name=spline_name,
+                    interpolation=spline.interpolation,
+                    min_max=spline.min_max,
+                    replace=True,  # Add replace parameter
+                    publish=spline.publish.copy() if hasattr(spline, 'publish') else None
                 )
                 
-                # Copy keyframes
-                for kf in channel.keyframes:
-                    copied_channel.add_keyframe(
-                        at=kf.at,
-                        value=kf.value(kf.at, {}),  # Extract the actual value
-                        interpolation=kf.interpolation,
-                        control_points=kf.control_points,
-                        derivative=kf.derivative
+                # Copy knots
+                for knot in spline.knots:
+                    copied_spline.add_knot(
+                        at=knot.at,
+                        value=knot.value(knot.at, {}),  # Extract the actual value
+                        interpolation=knot.interpolation,
+                        control_points=knot.control_points,
+                        derivative=knot.derivative
                     )
         
         return copied_solver
+
+# For backward compatibility
+KeyframeSolver = SplineSolver

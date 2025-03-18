@@ -12,15 +12,13 @@ import matplotlib.pyplot as plt
 # Use absolute or relative imports based on context
 try:
     # When installed as a package
-    from splinaltap.solver import KeyframeSolver
-    from splinaltap.spline import Spline
-    from splinaltap.channel import Channel
+    from splinaltap.solver import SplineSolver
+    from splinaltap.spline import SplineGroup, Spline, Knot
     from splinaltap.backends import BackendManager
 except ImportError:
     # When run directly (python splinaltap)
-    from solver import KeyframeSolver
-    from spline import Spline
-    from channel import Channel
+    from solver import SplineSolver
+    from spline import SplineGroup, Spline, Knot
     from backends import BackendManager
 
 try:
@@ -95,21 +93,21 @@ def parse_method_parameters(method_str: str) -> Tuple[str, Optional[Dict[str, st
     return method_name, params
 
 
-def create_solver_from_args(args: argparse.Namespace) -> KeyframeSolver:
+def create_solver_from_args(args: argparse.Namespace) -> SplineSolver:
     """Create a Solver from command-line arguments.
     
     Args:
         args: Parsed command-line arguments
         
     Returns:
-        Solver object with initialized splines and channels
+        Solver object with initialized spline groups and splines
     """
     # If an input file is provided, load from that
     if args.input_file:
-        return KeyframeSolver.from_file(args.input_file)
+        return SplineSolver.from_file(args.input_file)
     
     # Otherwise, create from keyframes arguments
-    solver = KeyframeSolver(name="CommandLine")
+    solver = SplineSolver(name="CommandLine")
     
     # Add essential built-in variables for expressions
     solver.set_variable("pi", 3.14159265359)
@@ -197,9 +195,9 @@ def create_solver_from_args(args: argparse.Namespace) -> KeyframeSolver:
         # Store keyframe data for later (including method name)
         keyframes.append((position, value, derivative, control_points, method_name))
     
-    # Initialize default spline and channel
-    spline = solver.create_spline("default")
-    channel = spline.add_channel("value")
+    # Initialize default spline group and spline
+    spline_group = solver.create_spline_group("default")
+    spline = spline_group.add_spline("value")
     
     # Add variables if provided
     if hasattr(args, 'variables') and args.variables:
@@ -233,8 +231,8 @@ def create_solver_from_args(args: argparse.Namespace) -> KeyframeSolver:
         else:
             at = position
         
-        # Add keyframe to the channel
-        channel.add_keyframe(
+        # Add knot to the spline (replaces keyframe)
+        spline.add_knot(
             at=at,
             value=value,
             interpolation=method,
@@ -245,7 +243,7 @@ def create_solver_from_args(args: argparse.Namespace) -> KeyframeSolver:
     return solver
 
 
-def visualize_solver(solver: KeyframeSolver, args: argparse.Namespace) -> None:
+def visualize_solver(solver: SplineSolver, args: argparse.Namespace) -> None:
     """Visualize the solver with matplotlib.
     
     Args:
@@ -255,8 +253,8 @@ def visualize_solver(solver: KeyframeSolver, args: argparse.Namespace) -> None:
     Visualization options can be specified as key=value pairs:
         - theme=light|dark: Set the plot theme (default: light)
         - save=/path/to/file.png: Save the plot to a file
-        - overlay=true|false: If true (default), all channels are plotted in a single graph; 
-                             if false, each spline gets its own subplot
+        - overlay=true|false: If true (default), all splines are plotted in a single graph; 
+                             if false, each spline group gets its own subplot
         
     Example:
         --visualize theme=dark save=plot.png overlay=false
@@ -309,7 +307,7 @@ def visualize_solver(solver: KeyframeSolver, args: argparse.Namespace) -> None:
     )
 
 
-def sample_solver(solver: KeyframeSolver, args: argparse.Namespace) -> Dict[str, Any]:
+def sample_solver(solver: SplineSolver, args: argparse.Namespace) -> Dict[str, Any]:
     """Sample the solver at specified points.
     
     Args:
@@ -402,8 +400,8 @@ def sample_solver(solver: KeyframeSolver, args: argparse.Namespace) -> Dict[str,
     # Use the solver's evaluation method to compute all values at once
     all_results = solver.solve_multiple(sample_points, method=solver_method)
     
-    # When no results are found, create a default channel with the expected format
-    if not any(solver.splines):
+    # When no results are found, create a default spline with the expected format
+    if not any(solver.spline_groups):
         if "default" not in results["results"]:
             results["results"]["default"] = {}
         if "value" not in results["results"]["default"]:
@@ -649,33 +647,33 @@ def scene_cmd(args: argparse.Namespace) -> None:
         
         file_path = scene_args[0]
         try:
-            # Set _deserialize method in KeyframeSolver to use replace=True
+            # Set _deserialize method in SplineSolver to use replace=True
             # By monkey patching it through solver.py module
             from . import solver
-            original_deserialize = solver.KeyframeSolver._deserialize
+            original_deserialize = solver.SplineSolver._deserialize
             
             def patched_deserialize(cls, data):
                 return original_deserialize(cls, data)
             
             # Replace the method temporarily
-            solver.KeyframeSolver._deserialize = classmethod(patched_deserialize)
+            solver.SplineSolver._deserialize = classmethod(patched_deserialize)
             
             # Now try to load the file
-            solver = KeyframeSolver.from_file(file_path)
+            solver = SplineSolver.from_file(file_path)
             
             # Restore original method
-            solver.KeyframeSolver._deserialize = original_deserialize
+            solver.SplineSolver._deserialize = original_deserialize
             
             print(f"Solver: {solver.name}")
             print(f"Metadata: {solver.metadata}")
             print(f"Range: {solver.range}")
             print(f"Variables: {solver.variables}")
-            print(f"Splines: {len(solver.splines)}")
+            print(f"Spline Groups: {len(solver.spline_groups)}")
             
-            for name, spline in solver.splines.items():
-                print(f"  - {name}: {len(spline.channels)} channels")
-                for channel_name, channel in spline.channels.items():
-                    print(f"    - {channel_name}: {len(channel.keyframes)} keyframes, {channel.interpolation} interpolation")
+            for name, spline_group in solver.spline_groups.items():
+                print(f"  - {name}: {len(spline_group.splines)} splines")
+                for spline_name, spline in spline_group.splines.items():
+                    print(f"    - {spline_name}: {len(spline.knots)} knots, {spline.interpolation} interpolation")
         except Exception as e:
             print(f"Error reading scene file: {e}")
     
@@ -686,30 +684,30 @@ def scene_cmd(args: argparse.Namespace) -> None:
         
         file_path = scene_args[0]
         try:
-            # Set _deserialize method in KeyframeSolver to use replace=True
+            # Set _deserialize method in SplineSolver to use replace=True
             # By monkey patching it through solver.py module
             from . import solver
-            original_deserialize = solver.KeyframeSolver._deserialize
+            original_deserialize = solver.SplineSolver._deserialize
             
             def patched_deserialize(cls, data):
                 return original_deserialize(cls, data)
             
             # Replace the method temporarily
-            solver.KeyframeSolver._deserialize = classmethod(patched_deserialize)
+            solver.SplineSolver._deserialize = classmethod(patched_deserialize)
             
             # Now try to load the file
-            solver = KeyframeSolver.from_file(file_path)
+            solver = SplineSolver.from_file(file_path)
             
             # Restore original method
-            solver.KeyframeSolver._deserialize = original_deserialize
+            solver.SplineSolver._deserialize = original_deserialize
             
             print(f"Solver: {solver.name}")
             
-            for name in solver.get_spline_names():
+            for name in solver.get_spline_group_names():
                 print(f"  - {name}")
         except Exception as e:
-            # Swallow the error about duplicate channels and try to proceed anyway
-            if "Channel" in str(e) and "already exists in this spline" in str(e):
+            # Swallow the error about duplicate splines and try to proceed anyway
+            if "Spline" in str(e) and "already exists in this spline group" in str(e):
                 print(f"Solver: DEFAULT (recovered from error)")
                 print(f"  - position")
             else:
@@ -722,7 +720,7 @@ def scene_cmd(args: argparse.Namespace) -> None:
         
         input_path, output_path = scene_args
         try:
-            solver = KeyframeSolver.from_file(input_path)
+            solver = SplineSolver.from_file(input_path)
             solver.save(output_path)
             print(f"Converted {input_path} to {output_path}")
         except Exception as e:
@@ -740,155 +738,126 @@ def scene_cmd(args: argparse.Namespace) -> None:
             input_path, output_path, spline_path, channel_path = scene_args
         
         try:
-            solver = KeyframeSolver.from_file(input_path)
+            solver = SplineSolver.from_file(input_path)
             
             if '.' in spline_path and channel_path is None:
-                # Format is "spline.channel"
-                spline_name, channel_name = spline_path.split('.', 1)
-                channel_path = channel_name
+                # Format is "spline_group.spline"
+                spline_group_name, spline_name = spline_path.split('.', 1)
+                channel_path = spline_name
             else:
-                spline_name = spline_path
+                spline_group_name = spline_path
             
-            if spline_name not in solver.splines:
-                print(f"Error: Spline '{spline_name}' not found in solver.")
+            if spline_group_name not in solver.spline_groups:
+                print(f"Error: Spline group '{spline_group_name}' not found in solver.")
                 return
             
-            # Extract the spline
-            spline = solver.get_spline(spline_name)
+            # Extract the spline group
+            spline_group = solver.get_spline_group(spline_group_name)
             
             if channel_path:
-                # Extract a specific channel
-                if channel_path not in spline.channels:
-                    print(f"Error: Channel '{channel_path}' not found in spline '{spline_name}'.")
+                # Extract a specific spline
+                if channel_path not in spline_group.splines:
+                    print(f"Error: Spline '{channel_path}' not found in spline group '{spline_group_name}'.")
                     return
                 
-                # Create a new solver with just this channel
-                new_solver = KeyframeSolver(name=f"{solver.name}_{spline_name}_{channel_path}")
-                new_spline = new_solver.create_spline(spline_name)
+                # Create a new solver with just this spline
+                new_solver = SplineSolver(name=f"{solver.name}_{spline_group_name}_{channel_path}")
+                new_spline_group = new_solver.create_spline_group(spline_group_name)
                 
-                # Copy the channel
-                channel = spline.channels[channel_path]
-                new_channel = new_spline.add_channel(
+                # Copy the spline
+                spline = spline_group.splines[channel_path]
+                new_spline = new_spline_group.add_spline(
                     name=channel_path,
-                    interpolation=channel.interpolation,
-                    min_max=channel.min_max,
-                    replace=True  # Use replace=True to avoid errors with duplicate channels
+                    interpolation=spline.interpolation,
+                    min_max=spline.min_max,
+                    replace=True  # Use replace=True to avoid errors with duplicate splines
                 )
                 
-                # Copy keyframes
-                for kf in channel.keyframes:
+                # Copy knots
+                for knot in spline.knots:
                     try:
                         # Get the value - handle callable function
                         # Try a direct evaluation first if this is a callable
-                        value = kf.value
+                        value = knot.value
                         if callable(value):
                             try:
                                 # If it's a callable, evaluate it directly
-                                value = value(kf.at, {})
+                                value = value(knot.at, {})
                             except Exception as e:
                                 # Fallback to a basic value if the callable fails
                                 value = 0
                         
-                        new_channel.add_keyframe(
-                            at=kf.at,
+                        new_spline.add_knot(
+                            at=knot.at,
                             value=value,
-                            interpolation=kf.interpolation,
-                            control_points=kf.control_points,
-                            derivative=kf.derivative
+                            interpolation=knot.interpolation,
+                            control_points=knot.control_points,
+                            derivative=knot.derivative
                         )
                     except Exception as e:
-                        print(f"Warning: Failed to copy keyframe at {kf.at}: {e}. Using default value 0.")
-                        # Add a default value keyframe
-                        new_channel.add_keyframe(
-                            at=kf.at,
+                        print(f"Warning: Failed to copy knot at {knot.at}: {e}. Using default value 0.")
+                        # Add a default value knot
+                        new_spline.add_knot(
+                            at=knot.at,
                             value=0.0,
-                            interpolation=kf.interpolation,
-                            control_points=kf.control_points,
-                            derivative=kf.derivative
+                            interpolation=knot.interpolation,
+                            control_points=knot.control_points,
+                            derivative=knot.derivative
                         )
                 
                 # Save the new solver
                 new_solver.save(output_path)
-                print(f"Extracted channel '{spline_name}.{channel_path}' to {output_path}")
+                print(f"Extracted spline '{spline_group_name}.{channel_path}' to {output_path}")
             
             else:
-                # Extract the whole spline
-                new_solver = KeyframeSolver(name=f"{solver.name}_{spline_name}")
-                new_spline = new_solver.create_spline(spline_name)
+                # Extract the whole spline group
+                new_solver = SplineSolver(name=f"{solver.name}_{spline_group_name}")
+                new_spline_group = new_solver.create_spline_group(spline_group_name)
                 
-                # Copy all channels
-                for channel_name, channel in spline.channels.items():
-                    new_channel = new_spline.add_channel(
-                        name=channel_name,
-                        interpolation=channel.interpolation,
-                        min_max=channel.min_max,
-                        replace=True  # Use replace=True to avoid errors with duplicate channels
+                # Copy all splines
+                for spline_name, spline in spline_group.splines.items():
+                    new_spline = new_spline_group.add_spline(
+                        name=spline_name,
+                        interpolation=spline.interpolation,
+                        min_max=spline.min_max,
+                        replace=True  # Use replace=True to avoid errors with duplicate splines
                     )
                     
-                    # Copy keyframes
-                    for kf in channel.keyframes:
-
+                    # Copy knots
+                    for knot in spline.knots:
                         try:
-
                             # Get the value - handle callable function
-
                             # Try a direct evaluation first if this is a callable
-
-                            value = kf.value
-
+                            value = knot.value
                             if callable(value):
-
                                 try:
-
-                                    # If it\'s a callable, evaluate it directly
-
-                                    value = value(kf.at, {})
-
+                                    # If it's a callable, evaluate it directly
+                                    value = value(knot.at, {})
                                 except Exception as e:
-
                                     # Fallback to a basic value if the callable fails
-
                                     value = 0
-
                             
-
-                            new_channel.add_keyframe(
-
-                                at=kf.at,
-
+                            new_spline.add_knot(
+                                at=knot.at,
                                 value=value,
-
-                                interpolation=kf.interpolation,
-
-                                control_points=kf.control_points,
-
-                                derivative=kf.derivative
-
+                                interpolation=knot.interpolation,
+                                control_points=knot.control_points,
+                                derivative=knot.derivative
                             )
-
                         except Exception as e:
-
-                            print(f"Warning: Failed to copy keyframe at {kf.at}: {e}. Using default value 0.")
-
-                            # Add a default value keyframe
-
-                            new_channel.add_keyframe(
-
-                                at=kf.at,
-
+                            print(f"Warning: Failed to copy knot at {knot.at}: {e}. Using default value 0.")
+                            # Add a default value knot
+                            new_spline.add_knot(
+                                at=knot.at,
                                 value=0.0,
-
-                                interpolation=kf.interpolation,
-
-                                control_points=kf.control_points,
-
-                                derivative=kf.derivative
-
+                                interpolation=knot.interpolation,
+                                control_points=knot.control_points,
+                                derivative=knot.derivative
                             )
                 
                 # Save the new solver
                 new_solver.save(output_path)
-                print(f"Extracted spline '{spline_name}' to {output_path}")
+                print(f"Extracted spline group '{spline_group_name}' to {output_path}")
         
         except Exception as e:
             print(f"Error extracting from scene file: {e}")
@@ -1037,7 +1006,7 @@ def generate_scene_cmd(args: argparse.Namespace) -> None:
     output_file = args.generate_scene
     
     # Create a solver
-    solver = KeyframeSolver(name="GeneratedExample")
+    solver = SplineSolver(name="GeneratedExample")
     solver.set_metadata("description", "Generated example scene")
     solver.set_metadata("author", "SplinalTap")
     solver.set_variable("pi", 3.14159)
@@ -1046,84 +1015,55 @@ def generate_scene_cmd(args: argparse.Namespace) -> None:
     if hasattr(args, 'input_file') and args.input_file:
         try:
             # Load the input file
-            source_solver = KeyframeSolver.from_file(args.input_file)
+            source_solver = SplineSolver.from_file(args.input_file)
             
             # Copy metadata and variables
             solver.name = source_solver.name
             solver.metadata = source_solver.metadata.copy()
             solver.variables = source_solver.variables.copy()
             
-            # Copy splines
-            for name, spline in source_solver.splines.items():
-                new_spline = solver.create_spline(name)
+            # Copy spline groups
+            for group_name, group in source_solver.spline_groups.items():
+                new_group = solver.create_spline_group(group_name)
                 
-                # Copy channels
-                for channel_name, channel in spline.channels.items():
-                    new_channel = new_spline.add_channel(
-                        name=channel_name,
-                        interpolation=channel.interpolation,
-                        min_max=channel.min_max
+                # Copy splines
+                for spline_name, spline in group.splines.items():
+                    new_spline = new_group.add_spline(
+                        name=spline_name,
+                        interpolation=spline.interpolation,
+                        min_max=spline.min_max
                     )
                     
-                    # Copy keyframes
-                    for kf in channel.keyframes:
-
+                    # Copy knots
+                    for knot in spline.knots:
                         try:
-
                             # Get the value - handle callable function
-
                             # Try a direct evaluation first if this is a callable
-
-                            value = kf.value
-
+                            value = knot.value
                             if callable(value):
-
                                 try:
-
-                                    # If it\'s a callable, evaluate it directly
-
-                                    value = value(kf.at, {})
-
+                                    # If it's a callable, evaluate it directly
+                                    value = value(knot.at, {})
                                 except Exception as e:
-
                                     # Fallback to a basic value if the callable fails
-
                                     value = 0
-
                             
-
-                            new_channel.add_keyframe(
-
-                                at=kf.at,
-
+                            new_spline.add_knot(
+                                at=knot.at,
                                 value=value,
-
-                                interpolation=kf.interpolation,
-
-                                control_points=kf.control_points,
-
-                                derivative=kf.derivative
-
+                                interpolation=knot.interpolation,
+                                control_points=knot.control_points,
+                                derivative=knot.derivative
                             )
-
                         except Exception as e:
-
-                            print(f"Warning: Failed to copy keyframe at {kf.at}: {e}. Using default value 0.")
-
-                            # Add a default value keyframe
-
-                            new_channel.add_keyframe(
-
-                                at=kf.at,
-
+                            print(f"Warning: Failed to copy knot at {knot.at}: {e}. Using default value 0.")
+                            # Add a default value knot
+                            new_spline.add_knot(
+                                at=knot.at,
                                 value=0.0,
-
-                                interpolation=kf.interpolation,
-
-                                control_points=kf.control_points,
-
-                                derivative=kf.derivative
-
+                                interpolation=knot.interpolation,
+                                control_points=knot.control_points,
+                                derivative=knot.derivative
                             )
         except Exception as e:
             print(f"Warning: Could not load input file: {e}")
@@ -1174,11 +1114,11 @@ def generate_scene_cmd(args: argparse.Namespace) -> None:
                 
                 keyframes.append((position, value, derivative, control_points, method_name))
             
-            # Create a new spline with the keyframes
-            if not solver.splines:
-                spline = solver.create_spline("position")
+            # Create a new spline group with the keyframes if none exists
+            if not solver.spline_groups:
+                spline_group = solver.create_spline_group("position")
                 
-                # Create channels based on dimensions
+                # Create splines based on dimensions
                 dimensions = 3
                 if hasattr(args, 'dimensions'):
                     try:
@@ -1186,15 +1126,15 @@ def generate_scene_cmd(args: argparse.Namespace) -> None:
                     except ValueError:
                         pass
                 
-                channel_names = ['x', 'y', 'z'][:dimensions]
+                spline_names = ['x', 'y', 'z'][:dimensions]
                 
-                # Create each channel and add keyframes
-                for name in channel_names:
-                    channel = spline.add_channel(name)
+                # Create each spline and add knots
+                for name in spline_names:
+                    spline = spline_group.add_spline(name)
                     
-                    # Add the keyframes
+                    # Add the knots
                     for pos, val, deriv, cp, method in keyframes:
-                        channel.add_keyframe(
+                        spline.add_knot(
                             at=pos,
                             value=val,
                             interpolation=method,
@@ -1202,10 +1142,10 @@ def generate_scene_cmd(args: argparse.Namespace) -> None:
                             derivative=deriv
                         )
             else:
-                # Add keyframes to existing spline
-                for name, spline in solver.splines.items():
-                    if "position" in name.lower():
-                        # Find channels or create them
+                # Add knots to existing spline group
+                for group_name, group in solver.spline_groups.items():
+                    if "position" in group_name.lower():
+                        # Find splines or create them
                         dimensions = 3
                         if hasattr(args, 'dimensions'):
                             try:
@@ -1213,19 +1153,19 @@ def generate_scene_cmd(args: argparse.Namespace) -> None:
                             except ValueError:
                                 pass
                         
-                        channel_names = ['x', 'y', 'z'][:dimensions]
+                        spline_names = ['x', 'y', 'z'][:dimensions]
                         
-                        # Add/update each channel
-                        for ch_name in channel_names:
-                            # Create channel if it doesn't exist
-                            if ch_name not in spline.channels:
-                                channel = spline.add_channel(ch_name, replace=True)
+                        # Add/update each spline
+                        for spline_name in spline_names:
+                            # Create spline if it doesn't exist
+                            if spline_name not in group.splines:
+                                spline = group.add_spline(spline_name, replace=True)
                             else:
-                                channel = spline.channels[ch_name]
+                                spline = group.splines[spline_name]
                             
-                            # Add the keyframes
+                            # Add the knots
                             for pos, val, deriv, cp, method in keyframes:
-                                channel.add_keyframe(
+                                spline.add_knot(
                                     at=pos,
                                     value=val,
                                     interpolation=method,
@@ -1236,12 +1176,12 @@ def generate_scene_cmd(args: argparse.Namespace) -> None:
         except Exception as e:
             print(f"Warning: Could not parse keyframes: {e}")
     
-    # If we still don't have any splines, create a default one
-    if not solver.splines:
-        # Create a default position spline
-        position = solver.create_spline("position")
+    # If we still don't have any spline groups, create a default one
+    if not solver.spline_groups:
+        # Create a default position spline group
+        position_group = solver.create_spline_group("position")
         
-        # Add x, y, z channels
+        # Add x, y, z splines
         dimensions = 3
         if hasattr(args, 'dimensions'):
             try:
@@ -1249,15 +1189,15 @@ def generate_scene_cmd(args: argparse.Namespace) -> None:
             except ValueError:
                 pass
         
-        channel_names = ['x', 'y', 'z'][:dimensions]
+        spline_names = ['x', 'y', 'z'][:dimensions]
         
-        for i, name in enumerate(channel_names):
-            channel = position.add_channel(name)
+        for i, name in enumerate(spline_names):
+            spline = position_group.add_spline(name)
             
-            # Add some default keyframes
-            channel.add_keyframe(at=0.0, value=0)
-            channel.add_keyframe(at=0.5, value=f"sin(@ * pi * {i+1})" if i > 0 else 5)
-            channel.add_keyframe(at=1.0, value=0)
+            # Add some default knots
+            spline.add_knot(at=0.0, value=0)
+            spline.add_knot(at=0.5, value=f"sin(@ * pi * {i+1})" if i > 0 else 5)
+            spline.add_knot(at=1.0, value=0)
     
     # Determine output format
     content_type = getattr(args, 'content_type', 'json')
