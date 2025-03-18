@@ -2,18 +2,26 @@
 splinaltap - Keyframe interpolation and expression evaluation that goes to eleven!
 """
 
-from .channel import Channel, Keyframe
+from .knot import Knot
 from .spline import Spline
-from .solver import KeyframeSolver
+from .spline_group import SplineGroup
+from .solver import SplineSolver, KeyframeSolver
 from .expression import ExpressionEvaluator
 from .visualization import plot_interpolation_comparison, plot_single_interpolation
 
-__version__ = "0.8.0"
+# For backward compatibility
+Channel = Spline
+Keyframe = Knot
+
+__version__ = "1.0.0"
 __all__ = [
-    "KeyframeSolver",
-    "Spline",
-    "Channel", 
-    "Keyframe",
+    "SplineSolver",
+    "KeyframeSolver",  # For backward compatibility
+    "SplineGroup",
+    "Spline", 
+    "Knot",
+    "Channel",  # For backward compatibility 
+    "Keyframe",  # For backward compatibility
     "ExpressionEvaluator",
     "plot_interpolation_comparison", 
     "plot_single_interpolation",

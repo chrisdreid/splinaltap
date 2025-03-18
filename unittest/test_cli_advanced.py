@@ -157,52 +157,49 @@ class TestCLIAdvanced(unittest.TestCase):
         # Verify basic scene structure
         self.assertIn('name', data)
         self.assertIn('metadata', data)
-        self.assertIn('splines', data)
+        self.assertIn('spline_groups', data)
         
         # Print debug info about the structure
         print(f"Scene data keys: {data.keys()}")
-        print(f"Splines: {list(data['splines'].keys())}")
-        for name, spline in data['splines'].items():
-            print(f"Spline '{name}' keys: {spline.keys()}")
-            if 'channels' in spline:
-                print(f"Spline '{name}' channels: {spline['channels'].keys()}")
-                for ch_name, channel in spline['channels'].items():
-                    if 'keyframes' in channel:
-                        kfs = channel['keyframes']
-                        print(f"Channel '{ch_name}' has {len(kfs)} keyframes")
-                        for kf in kfs:
-                            print(f"  KF: {kf}")
+        print(f"Spline Groups: {list(data['spline_groups'].keys())}")
+        for group_name, group in data['spline_groups'].items():
+            print(f"Spline Group '{group_name}' keys: {group.keys()}")
+            if 'splines' in group:
+                print(f"Spline Group '{group_name}' splines: {group['splines'].keys()}")
+                for spline_name, spline in group['splines'].items():
+                    if 'knots' in spline:
+                        knots = spline['knots']
+                        print(f"Spline '{spline_name}' has {len(knots)} knots")
+                        for knot in knots:
+                            print(f"  Knot: {knot}")
         
         # Since we provided keyframes, they should be used
-        # Find a spline with our keyframes (in any channel)
-        found_keyframes = False
+        # Find a spline with our knots
+        found_knots = False
         
-        # Data has a different structure than expected - splines is a dictionary
-        for spline_name, spline in data['splines'].items():
-            if 'channels' in spline:
-                for channel_name, channel in spline['channels'].items():
-                    if 'keyframes' in channel and len(channel['keyframes']) >= 3:
-                        # Check if there are keyframes at 0, 0.5, and 1 positions
+        # Data has a new structure - spline_groups contains splines
+        for group_name, group in data['spline_groups'].items():
+            if 'splines' in group:
+                for spline_name, spline in group['splines'].items():
+                    if 'knots' in spline and len(spline['knots']) >= 3:
+                        # Check if there are knots at 0, 0.5, and 1 positions
                         # But be flexible about the exact format
                         positions = set()
-                        for kf in channel['keyframes']:
-                            if isinstance(kf, dict):
-                                # Check for both old 'position' and new '@' format
-                                if 'position' in kf:
-                                    positions.add(kf['position'])
-                                elif '@' in kf:
-                                    positions.add(kf['@'])
-                            elif isinstance(kf, list) and len(kf) > 0:
-                                positions.add(kf[0])
+                        for knot in spline['knots']:
+                            if isinstance(knot, dict):
+                                # Check for '@' format
+                                if '@' in knot:
+                                    positions.add(knot['@'])
+                            elif isinstance(knot, list) and len(knot) > 0:
+                                positions.add(knot[0])
                         
                         print(f"Found positions: {positions}")
                         if 0.0 in positions and 0.5 in positions and 1.0 in positions:
-                            found_keyframes = True
+                            found_knots = True
                             break
         
-        # For now, skip this assertion since we've found format differences
-        # Instead, we'll just verify the file was created and has basic structure
-        # self.assertTrue(found_keyframes, "Generated scene doesn't contain the expected keyframes")
+        # Verify the file was created and has the correct knots
+        self.assertTrue(found_knots, "Generated scene doesn't contain the expected knots")
     
     def test_scene_info_command(self):
         """Test the scene info command."""

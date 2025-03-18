@@ -1,0 +1,33 @@
+{
+  "version": "2.0",
+  "name": "TestSaveAndReload",
+  "metadata": {
+    "author": "Test User"
+  },
+  "range": [
+    0.0,
+    1.0
+  ],
+  "variables": {
+    "scale": 2.0
+  },
+  "spline_groups": {
+    "main": {
+      "splines": {
+        "position": {
+          "interpolation": "cubic",
+          "knots": [
+            {
+              "@": 0.0,
+              "value": "0"
+            },
+            {
+              "@": 1.0,
+              "value": "0"
+            }
+          ]
+        }
+      }
+    }
+  }
+}

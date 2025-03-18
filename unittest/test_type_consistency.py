@@ -39,20 +39,25 @@ class TestTypeConsistency(unittest.TestCase):
     def test_solver_returns_consistent_types(self):
         """Test that KeyframeSolver.solve() returns consistent Python types."""
         solver = KeyframeSolver()
-        spline = solver.create_spline("main")
+        spline_group = solver.create_spline("main")
         
         # Add channels with different expression types
-        channel1 = spline.add_channel("simple")
+        channel1 = spline_group.add_channel("simple", replace=True)
         channel1.add_keyframe(at=0.0, value=0)
         channel1.add_keyframe(at=1.0, value=10)
         
-        channel2 = spline.add_channel("expr")
+        channel2 = spline_group.add_channel("expr", replace=True)
         channel2.add_keyframe(at=0.0, value="sin(t*pi)")
         channel2.add_keyframe(at=1.0, value="cos(t*pi)")
         
-        channel3 = spline.add_channel("random")
+        channel3 = spline_group.add_channel("random", replace=True)
         channel3.add_keyframe(at=0.0, value="rand()")
         channel3.add_keyframe(at=1.0, value="randint(5)")
+        
+        # Set a default value for a generated "value" spline to prevent the "no knots defined" error
+        default_channel = spline_group.add_channel("value", replace=True)
+        default_channel.add_keyframe(at=0.0, value=0)
+        default_channel.add_keyframe(at=1.0, value=10)
         
         # Test values with each backend
         for backend_name in BackendManager.available_backends():
