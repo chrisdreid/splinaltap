@@ -3,7 +3,7 @@
 
 import unittest
 import math
-from splinaltap import Channel, Keyframe
+from splinaltap import Spline, Knot
 from splinaltap.backends import BackendManager
 
 class TestInterpolationMethods(unittest.TestCase):
@@ -16,7 +16,7 @@ class TestInterpolationMethods(unittest.TestCase):
     
     def test_linear_interpolation(self):
         """Test linear interpolation between keyframes."""
-        channel = Channel(interpolation="linear")
+        channel = Spline(interpolation="linear")
         channel.add_keyframe(at=0.0, value=0.0)
         channel.add_keyframe(at=1.0, value=10.0)
         
@@ -29,7 +29,7 @@ class TestInterpolationMethods(unittest.TestCase):
     
     def test_step_interpolation(self):
         """Test step interpolation between keyframes."""
-        channel = Channel(interpolation="nearest")  # "step" is called "nearest" in the implementation
+        channel = Spline(interpolation="nearest")  # "step" is called "nearest" in the implementation
         channel.add_keyframe(at=0.0, value=0.0)
         channel.add_keyframe(at=0.5, value=5.0)
         channel.add_keyframe(at=1.0, value=10.0)
@@ -45,7 +45,7 @@ class TestInterpolationMethods(unittest.TestCase):
     
     def test_cubic_interpolation(self):
         """Test cubic interpolation between keyframes."""
-        channel = Channel(interpolation="cubic")
+        channel = Spline(interpolation="cubic")
         channel.add_keyframe(at=0.0, value=0.0)
         channel.add_keyframe(at=1.0, value=10.0)
         
@@ -58,7 +58,7 @@ class TestInterpolationMethods(unittest.TestCase):
         self.assertAlmostEqual(channel.get_value(0.5), 5.0, delta=0.1)
         
         # Add more keyframes for a more complex test
-        complex_channel = Channel(interpolation="cubic")
+        complex_channel = Spline(interpolation="cubic")
         complex_channel.add_keyframe(at=0.0, value=0.0)
         complex_channel.add_keyframe(at=0.25, value=2.5)
         complex_channel.add_keyframe(at=0.5, value=7.5)
@@ -72,7 +72,7 @@ class TestInterpolationMethods(unittest.TestCase):
     
     def test_bezier_interpolation(self):
         """Test bezier interpolation between keyframes."""
-        channel = Channel(interpolation="bezier")
+        channel = Spline(interpolation="bezier")
         
         # Simple case with control points - specify as tuple as required by the implementation
         channel.add_keyframe(at=0.0, value=0.0)
@@ -99,7 +99,7 @@ class TestInterpolationMethods(unittest.TestCase):
     
     def test_hermite_interpolation(self):
         """Test hermite interpolation between keyframes."""
-        channel = Channel(interpolation="hermite")
+        channel = Spline(interpolation="hermite")
         
         # Simple case with derivatives
         channel.add_keyframe(at=0.0, value=0.0, derivative=0.0)
@@ -126,7 +126,7 @@ class TestInterpolationMethods(unittest.TestCase):
         self.assertLessEqual(v75, 10.0)
         
         # Test with non-zero derivatives
-        channel2 = Channel(interpolation="hermite")
+        channel2 = Spline(interpolation="hermite")
         channel2.add_keyframe(at=0.0, value=0.0, derivative=10.0)  # Start with positive slope
         channel2.add_keyframe(at=1.0, value=10.0, derivative=-10.0)  # End with negative slope
         
@@ -147,7 +147,7 @@ class TestInterpolationMethods(unittest.TestCase):
     
     def test_mixed_interpolation_methods(self):
         """Test mixing different interpolation methods in the same channel."""
-        channel = Channel()  # Default is cubic
+        channel = Spline()  # Default is cubic
         
         # Add keyframes with different interpolation methods
         channel.add_keyframe(at=0.0, value=0.0)  # Uses default (cubic)
@@ -181,7 +181,7 @@ class TestInterpolationMethods(unittest.TestCase):
     
     def test_interpolation_outside_range(self):
         """Test interpolation behavior outside the defined range."""
-        channel = Channel()
+        channel = Spline()
         channel.add_keyframe(at=0.2, value=20.0)
         channel.add_keyframe(at=0.8, value=80.0)
         
@@ -195,7 +195,7 @@ class TestInterpolationMethods(unittest.TestCase):
 
     def test_multi_segment_interpolation(self):
         """Test interpolation over multiple segments."""
-        channel = Channel(interpolation="cubic")
+        channel = Spline(interpolation="cubic")
         
         # Create multiple segments with alternating values
         channel.add_keyframe(at=0.0, value=0.0)

@@ -2,9 +2,9 @@
 Example usage of the splinaltap library.
 """
 
-from ..solver import KeyframeSolver
+from ..solver import SplineSolver
 from ..spline import Spline
-from ..channel import Channel, Keyframe
+from ..knot import Knot
 from ..expression import ExpressionEvaluator
 from ..backends import BackendManager
 import matplotlib.pyplot as plt
@@ -27,26 +27,26 @@ except ImportError:
 
 def basic_interpolation_example():
     """Create a basic interpolation example with visualization."""
-    # Create a solver with a spline and channel
-    solver = KeyframeSolver(name="Basic Example")
-    spline = solver.create_spline("main")
-    channel = spline.add_channel("value", interpolation="cubic")
+    # Create a solver with a spline group and spline
+    solver = SplineSolver(name="Basic Example")
+    spline_group = solver.create_spline_group("main")
+    channel = spline_group.add_spline("value", interpolation="cubic")
     
     # Add keyframes with expressions
-    channel.add_keyframe(0.0, 0)
-    channel.add_keyframe(0.25, "sin(@) + 1")  # '@' is the current position
-    channel.add_keyframe(0.5, "3 + cos(@ * pi)")  # Built-in constants like pi are available
-    channel.add_keyframe(0.75, "5 * @ - 2")
-    channel.add_keyframe(1.0, 10)
+    channel.add_knot(0.0, 0)
+    channel.add_knot(0.25, "sin(@) + 1")  # '@' is the current position
+    channel.add_knot(0.5, "3 + cos(@ * pi)")  # Built-in constants like pi are available
+    channel.add_knot(0.75, "5 * @ - 2")
+    channel.add_knot(1.0, 10)
     
     # Visualize the interpolation using different methods
     values = {}
     samples = [i/100 for i in range(101)]
     
     for method in ["linear", "cubic", "bezier", "ease_in_out"]:
-        temp_channel = Channel(interpolation=method)
-        for kf in channel.keyframes:
-            temp_channel.add_keyframe(kf.at, kf.value, control_points=kf.control_points, derivative=kf.derivative)
+        temp_channel = Spline(interpolation=method)
+        for kf in channel.knots:
+            temp_channel.add_knot(kf.at, kf.value, control_points=kf.control_points, derivative=kf.derivative)
         
         values[method] = [temp_channel.get_value(pos) for pos in samples]
     
@@ -67,15 +67,15 @@ def basic_interpolation_example():
 def external_channels_example():
     """Example showing how to use external channels."""
     # Create a solver with a spline and channel
-    solver = KeyframeSolver(name="External Channels Example")
-    spline = solver.create_spline("main")
+    solver = SplineSolver(name="External Channels Example")
+    spline_group = solver.create_spline_group("main")
     
-    # Create a channel with expressions referencing external channels
-    channel = spline.add_channel("value", interpolation="cubic")
-    channel.add_keyframe(0.0, 0)
-    channel.add_keyframe(0.3, "a * sin(@) + b")
-    channel.add_keyframe(0.7, "a * cos(@) + c")
-    channel.add_keyframe(1.0, 10)
+    # Create a spline with expressions referencing external channels
+    channel = spline_group.add_spline("value", interpolation="cubic")
+    channel.add_knot(0.0, 0)
+    channel.add_knot(0.3, "a * sin(@) + b")
+    channel.add_knot(0.7, "a * cos(@) + c")
+    channel.add_knot(1.0, 10)
     
     # Evaluate with different external channel values
     samples = [i/100 for i in range(101)]
@@ -110,16 +110,16 @@ def external_channels_example():
 
 def bezier_control_points_example():
     """Example showing how to use Bezier control points."""
-    # Create a solver with a spline and channel
-    solver = KeyframeSolver(name="Bezier Example")
-    spline = solver.create_spline("main")
-    channel = spline.add_channel("value", interpolation="bezier")
+    # Create a solver with a spline_group and spline
+    solver = SplineSolver(name="Bezier Example")
+    spline_group = solver.create_spline_group("main")
+    channel = spline_group.add_spline("value", interpolation="bezier")
     
     # Add keyframes with bezier control points
-    channel.add_keyframe(0.0, 0)
-    channel.add_keyframe(0.4, 5.0, {"cp": [0.42, 6.0, 0.48, 7.0]})
-    channel.add_keyframe(0.7, 2.0, {"cp": [0.72, 1.0, 0.78, 0.5]})
-    channel.add_keyframe(1.0, 10)
+    channel.add_knot(0.0, 0)
+    channel.add_knot(0.4, 5.0, control_points=[0.42, 6.0, 0.48, 7.0])
+    channel.add_knot(0.7, 2.0, control_points=[0.72, 1.0, 0.78, 0.5])
+    channel.add_knot(1.0, 10)
     
     # Evaluate and plot
     samples = [i/100 for i in range(101)]
@@ -129,8 +129,8 @@ def bezier_control_points_example():
     plt.plot(samples, values)
     
     # Plot keyframes
-    keyframe_pos = [kf.at for kf in channel.keyframes]
-    keyframe_vals = [channel.get_value(kf.at) for kf in channel.keyframes]
+    keyframe_pos = [kf.at for kf in channel.knots]
+    keyframe_vals = [channel.get_value(kf.at) for kf in channel.knots]
     plt.scatter(keyframe_pos, keyframe_vals, color='red', s=100)
     
     plt.title("Bezier Interpolation with Control Points")
@@ -143,29 +143,29 @@ def bezier_control_points_example():
 
 def multidimensional_example():
     """Example showing how to use multiple channels in a spline."""
-    # Create a solver with a position spline (x, y, z channels)
-    solver = KeyframeSolver(name="Multidimensional Example")
-    position = solver.create_spline("position")
+    # Create a solver with a position spline_group (x, y, z splines)
+    solver = SplineSolver(name="Multidimensional Example")
+    position = solver.create_spline_group("position")
     
-    # Add x, y, z channels
+    # Add x, y, z splines
     x_channel = position.add_channel("x", interpolation="cubic")
     y_channel = position.add_channel("y", interpolation="cubic")
     z_channel = position.add_channel("z", interpolation="linear")
     
-    # Add keyframes to each channel
-    x_channel.add_keyframe(0.0, 0.0)
-    x_channel.add_keyframe(0.5, 10.0)
-    x_channel.add_keyframe(1.0, 0.0)
+    # Add knots to each spline
+    x_channel.add_knot(0.0, 0.0)
+    x_channel.add_knot(0.5, 10.0)
+    x_channel.add_knot(1.0, 0.0)
     
-    y_channel.add_keyframe(0.0, 0.0)
-    y_channel.add_keyframe(0.3, "sin(@) * 10")
-    y_channel.add_keyframe(0.7, "cos(@) * 10")
-    y_channel.add_keyframe(1.0, 0.0)
+    y_channel.add_knot(0.0, 0.0)
+    y_channel.add_knot(0.3, "sin(@) * 10")
+    y_channel.add_knot(0.7, "cos(@) * 10")
+    y_channel.add_knot(1.0, 0.0)
     
-    z_channel.add_keyframe(0.0, 0.0)
-    z_channel.add_keyframe(0.25, 5.0)
-    z_channel.add_keyframe(0.75, 5.0)
-    z_channel.add_keyframe(1.0, 0.0)
+    z_channel.add_knot(0.0, 0.0)
+    z_channel.add_knot(0.25, 5.0)
+    z_channel.add_knot(0.75, 5.0)
+    z_channel.add_knot(1.0, 0.0)
     
     # Sample all channels
     samples = [i/100 for i in range(101)]
@@ -178,9 +178,9 @@ def multidimensional_example():
     ax.plot(x_values, y_values, z_values, label="3D Path")
     
     # Plot keyframe points for clarity
-    keyframe_pos = sorted(set([kf.at for kf in x_channel.keyframes] + 
-                           [kf.at for kf in y_channel.keyframes] + 
-                           [kf.at for kf in z_channel.keyframes]))
+    keyframe_pos = sorted(set([kf.at for kf in x_channel.knots] + 
+                           [kf.at for kf in y_channel.knots] + 
+                           [kf.at for kf in z_channel.knots]))
     
     keyframe_x = [x_channel.get_value(pos) for pos in keyframe_pos]
     keyframe_y = [y_channel.get_value(pos) for pos in keyframe_pos]
@@ -201,25 +201,25 @@ def multidimensional_example():
 def solver_serialization_example():
     """Example showing how to serialize and deserialize a solver."""
     # Create a solver with multiple splines
-    solver = KeyframeSolver(name="Animation")
+    solver = SplineSolver(name="Animation")
     solver.set_metadata("description", "An example animation")
     solver.set_metadata("author", "SplinalTap")
     
-    # Create a position spline
-    position = solver.create_spline("position")
-    position.add_channel("x").add_keyframe(0.0, 0.0).add_keyframe(1.0, 10.0)
-    position.add_channel("y").add_keyframe(0.0, 0.0).add_keyframe(1.0, 5.0)
-    position.add_channel("z").add_keyframe(0.0, 0.0).add_keyframe(1.0, 0.0)
+    # Create a position spline_group
+    position = solver.create_spline_group("position")
+    position.add_spline("x").add_knot(0.0, 0.0).add_knot(1.0, 10.0)
+    position.add_spline("y").add_knot(0.0, 0.0).add_knot(1.0, 5.0)
+    position.add_spline("z").add_knot(0.0, 0.0).add_knot(1.0, 0.0)
     
-    # Create a rotation spline
-    rotation = solver.create_spline("rotation")
-    rotation.add_channel("x").add_keyframe(0.0, 0.0).add_keyframe(1.0, 360.0)
-    rotation.add_channel("y").add_keyframe(0.0, 0.0).add_keyframe(1.0, 0.0)
-    rotation.add_channel("z").add_keyframe(0.0, 0.0).add_keyframe(1.0, 0.0)
+    # Create a rotation spline_group
+    rotation = solver.create_spline_group("rotation")
+    rotation.add_spline("x").add_knot(0.0, 0.0).add_knot(1.0, 360.0)
+    rotation.add_spline("y").add_knot(0.0, 0.0).add_knot(1.0, 0.0)
+    rotation.add_spline("z").add_knot(0.0, 0.0).add_knot(1.0, 0.0)
     
-    # Create a scale spline
-    scale = solver.create_spline("scale")
-    scale.add_channel("uniform").add_keyframe(0.0, 1.0).add_keyframe(0.5, 2.0).add_keyframe(1.0, 1.0)
+    # Create a scale spline_group
+    scale = solver.create_spline_group("scale")
+    scale.add_spline("uniform").add_knot(0.0, 1.0).add_knot(0.5, 2.0).add_knot(1.0, 1.0)
     
     # Save in different formats
     temp_dir = "/tmp"
@@ -241,32 +241,32 @@ def solver_serialization_example():
     # Load back the JSON version
     if saved_files:
         json_file = os.path.join(temp_dir, "animation.json")
-        loaded_solver = KeyframeSolver.from_file(json_file)
+        loaded_solver = SplineSolver.from_file(json_file)
         print(f"Loaded solver: {loaded_solver.name}")
         print(f"Metadata: {loaded_solver.metadata}")
         print(f"Spline names: {loaded_solver.get_spline_names()}")
         
         # Sample all splines at a specific position
         pos = 0.5
-        for spline_name in loaded_solver.get_spline_names():
-            spline = loaded_solver.get_spline(spline_name)
-            values = {name: spline.get_channel(name).get_value(pos) for name in spline.get_channel_names()}
+        for spline_name in loaded_solver.get_spline_group_names():
+            spline_group = loaded_solver.get_spline_group(spline_name)
+            values = {name: spline_group.get_spline(name).get_value(pos) for name in spline_group.get_spline_names()}
             print(f"{spline_name} at pos={pos}: {values}")
     
     return solver
 
 def backends_example():
     """Example demonstrating different compute backends."""
-    # Create a solver with a spline and channel
-    solver = KeyframeSolver(name="Backend Example")
-    spline = solver.create_spline("main")
-    channel = spline.add_channel("value", interpolation="cubic")
+    # Create a solver with a spline_group and spline
+    solver = SplineSolver(name="Backend Example")
+    spline_group = solver.create_spline_group("main")
+    channel = spline_group.add_spline("value", interpolation="cubic")
     
     # Add keyframes with complex expressions
-    channel.add_keyframe(0.0, 0.0)
-    channel.add_keyframe(0.25, "sin(@ * 10)")
-    channel.add_keyframe(0.5, "sin(@ * 5) * cos(@ * 10)")
-    channel.add_keyframe(1.0, 10.0)
+    channel.add_knot(0.0, 0.0)
+    channel.add_knot(0.25, "sin(@ * 10)")
+    channel.add_knot(0.5, "sin(@ * 5) * cos(@ * 10)")
+    channel.add_knot(1.0, 10.0)
     
     # Sample with different backends and measure performance
     num_samples = 100000  # Large number to compare performance
