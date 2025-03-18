@@ -57,7 +57,7 @@ The name "splinaltap" is a playful nod to the mockumentary "This Is Spinal Tap" 
 ## Basic Usage
 
 ```python
-from splinaltap import SplineSolver, SplineGroup, Spline
+from splinaltap import SplineSolver
 
 # Create a spline solver
 solver = SplineSolver(name="Interpolation")

@@ -103,6 +103,12 @@ class TestPlotting(unittest.TestCase):
         
         # Create position spline with x, y channels
         position = solver.create_spline("position")
+        
+        # Add keyframes to the "value" channel too (automatically created by create_spline)
+        value_pos = position.get_channel("value")
+        value_pos.add_keyframe(at=0.0, value=0.0)
+        value_pos.add_keyframe(at=1.0, value=1.0)
+        
         x = position.add_channel("x")
         y = position.add_channel("y")
         
@@ -114,6 +120,12 @@ class TestPlotting(unittest.TestCase):
         
         # Create rotation spline with angle channel
         rotation = solver.create_spline("rotation")
+        
+        # Add keyframes to the "value" channel too (automatically created by create_spline)
+        value_rot = rotation.get_channel("value")
+        value_rot.add_keyframe(at=0.0, value=0.0)
+        value_rot.add_keyframe(at=1.0, value=1.0)
+        
         angle = rotation.add_channel("angle")
         
         angle.add_keyframe(at=0.0, value=0.0)
@@ -142,8 +154,13 @@ class TestPlotting(unittest.TestCase):
         base = solver.create_spline("base")
         derived = solver.create_spline("derived")
         
+        # Make sure "value" channel in derived has keyframes
+        derived_value = derived.get_channel("value")
+        derived_value.add_keyframe(at=0.0, value=0.0)
+        derived_value.add_keyframe(at=1.0, value=1.0)
+        
         # Add channels
-        value = base.add_channel("value")
+        value = base.add_channel("value") # This replaces the default "value" channel
         squared = derived.add_channel("squared")
         
         # Add keyframes

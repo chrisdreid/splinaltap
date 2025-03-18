@@ -2,8 +2,9 @@
 splinaltap - Keyframe interpolation and expression evaluation that goes to eleven!
 """
 
-from .spline import Spline, Knot
-from .spline import SplineGroup
+from .knot import Knot
+from .spline import Spline
+from .spline_group import SplineGroup
 from .solver import SplineSolver, KeyframeSolver
 from .expression import ExpressionEvaluator
 from .visualization import plot_interpolation_comparison, plot_single_interpolation

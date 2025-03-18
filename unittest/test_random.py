@@ -71,6 +71,11 @@ class TestRandomFunctions(unittest.TestCase):
         solver = KeyframeSolver()
         spline = solver.create_spline("noise")
         
+        # Add keyframes to the "value" channel too (automatically created by create_spline)
+        value_channel = spline.get_channel("value")
+        value_channel.add_keyframe(at=0.0, value=0.0)
+        value_channel.add_keyframe(at=1.0, value=1.0)
+        
         # Create white noise channel (random float)
         white_noise = spline.add_channel("white")
         white_noise.add_keyframe(at=0.0, value="rand() * 2 - 1")  # Range: -1 to 1

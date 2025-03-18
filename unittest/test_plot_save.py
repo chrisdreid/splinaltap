@@ -29,6 +29,11 @@ class TestPlotSave(unittest.TestCase):
         # Create a position spline with x, y, z channels
         self.position = self.solver.create_spline("position")
         
+        # Add keyframes to the default "value" channel
+        self.value = self.position.get_channel("value")
+        self.value.add_keyframe(at=0.0, value=0.0)
+        self.value.add_keyframe(at=1.0, value=1.0)
+        
         # Add channels with different interpolation methods
         self.x = self.position.add_channel("x")
         self.y = self.position.add_channel("y", interpolation="linear")

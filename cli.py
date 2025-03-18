@@ -13,13 +13,17 @@ import matplotlib.pyplot as plt
 try:
     # When installed as a package
     from splinaltap.solver import SplineSolver
-    from splinaltap.spline import SplineGroup, Spline, Knot
+    from splinaltap.spline_group import SplineGroup
+    from splinaltap.spline import Spline
+    from splinaltap.knot import Knot
     from splinaltap.backends import BackendManager
 except ImportError:
     # When run directly (python splinaltap)
-    from solver import SplineSolver
-    from spline import SplineGroup, Spline, Knot
-    from backends import BackendManager
+    from .solver import SplineSolver
+    from .spline_group import SplineGroup
+    from .spline import Spline
+    from .knot import Knot
+    from .backends import BackendManager
 
 try:
     import numpy as np
