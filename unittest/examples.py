@@ -2,11 +2,11 @@
 Example usage of the splinaltap library.
 """
 
-from .solver import KeyframeSolver
-from .spline import Spline
-from .channel import Channel, Keyframe
-from .expression import ExpressionEvaluator
-from .backends import BackendManager
+from ..solver import KeyframeSolver
+from ..spline import Spline
+from ..channel import Channel, Keyframe
+from ..expression import ExpressionEvaluator
+from ..backends import BackendManager
 import matplotlib.pyplot as plt
 import time
 import os
