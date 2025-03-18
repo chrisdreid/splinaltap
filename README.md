@@ -2,7 +2,8 @@
 
 *Keyframe interpolation and expression evaluation that goes to [eleven](https://www.youtube.com/watch?v=4xgx4k83zzc)!*
 
-![Goes To Eleven](https://raw.githubusercontent.com/chrisdreid/splinaltap/6633933764f6878741d91ec9ea604db3a3a0e415/unittest/output/goes_to_eleven.svg)
+![Goes To Eleven](https://raw.githubusercontent.com/chrisdreid/splinaltap/d5bad763c2c9f6edb9ba7f8892e8d8ead1e11931/unittest/output/goes_to_eleven.svg)
+
 
 ## Introduction
 
