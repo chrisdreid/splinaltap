@@ -90,6 +90,61 @@ solver_plot.show()                                    # Show most recently creat
 
 ## Advanced Usage
 
+### Adding and Removing Elements
+
+SplinalTap provides comprehensive CRUD (Create, Read, Update, Delete) operations for all elements in the interpolation hierarchy.
+
+```python
+from splinaltap import SplineSolver
+
+# Create a solver with multiple spline groups and splines
+solver = SplineSolver(name="CRUD Example")
+
+# Add spline groups
+position = solver.create_spline_group("position")
+rotation = solver.create_spline_group("rotation")
+scale = solver.create_spline_group("scale")
+
+# Add splines to position group
+x = position.add_spline("x")
+y = position.add_spline("y")
+z = position.add_spline("z")
+
+# Add knots to x spline
+x.add_knot(at=0.0, value=0.0)
+x.add_knot(at=0.5, value=5.0)
+x.add_knot(at=1.0, value=10.0)
+
+# Add some useless knot (we'll remove it later)
+x.add_knot(at=0.25, value=2.0)
+
+# REMOVING ELEMENTS
+
+# 1. Remove a knot from a spline
+x.remove_knot(0.25)  # Remove knot at position 0.25
+# OR use backward compatibility method
+x.remove_keyframe(0.25)
+
+# 2. Remove a spline from a spline group
+position.remove_spline("z")  # Remove z spline from position group
+# OR use backward compatibility method
+position.remove_channel("z")
+
+# 3. Remove a spline group from the solver
+solver.remove_spline_group("scale")  # Remove scale group from solver
+# OR use backward compatibility method
+solver.remove_spline("scale")  # Note: this is for backward compatibility with old API
+
+# Verify removal operations
+print(f"Position splines: {list(position.splines.keys())}")  # ['x', 'y']
+print(f"Spline groups: {solver.get_spline_group_names()}")  # ['position', 'rotation']
+print(f"X knot positions: {[kf.at for kf in x.knots]}")     # [0.0, 0.5, 1.0]
+
+# Using the solver after removals works as expected
+result = solver.solve(0.5)
+print(f"Result at t=0.5: {result}")  # Only includes 'position' and 'rotation' groups
+```
+
 ### Cross-Group and Cross-Spline References
 
 The publish feature allows you to use values from one spline in expressions of another spline, even across different spline groups. Here's an example:
