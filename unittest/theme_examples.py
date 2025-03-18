@@ -297,7 +297,7 @@ def create_goes_to_eleven_example(output_dir=None):
     
     # Save the goes-to-eleven comparison plot
     eleven_path = os.path.join(output_dir, "goes_to_eleven.svg")
-    solver.save_plot(eleven_path, samples=500, theme="dark")
+    solver.save_plot(eleven_path, samples=500, theme="dark", height=3)
     
     # Save the beautiful showcase plot
     showcase_spline = solver.get_spline("showcase")

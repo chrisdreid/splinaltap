@@ -303,7 +303,9 @@ class Spline:
         filter_channels: Optional[List[str]] = None,
         theme: str = "dark",
         title: Optional[str] = None,
-        save_path: Optional[str] = None
+        save_path: Optional[str] = None,
+        width: Optional[float] = None,
+        height: Optional[float] = None
     ):
         """Generate a plot of the spline's channels.
         
@@ -313,6 +315,8 @@ class Spline:
             theme: Plot theme - 'light' or 'dark'
             title: Optional title for the plot (defaults to spline name if available)
             save_path: Optional file path to save the plot (e.g., 'plot.png')
+            width: Optional figure width in inches (defaults to 10)
+            height: Optional figure height in inches (defaults to 6)
             
         Returns:
             The matplotlib figure
@@ -335,8 +339,12 @@ class Spline:
         # Get channel values
         channel_values = self.sample(positions, filter_channels)
         
+        # Set default figure size if not provided
+        figure_width = width or 10
+        figure_height = height or 6
+        
         # Create figure
-        fig, ax = plt.subplots(figsize=(10, 6))
+        fig, ax = plt.subplots(figsize=(figure_width, figure_height))
         
         # Set color based on theme
         if theme == "dark":
@@ -446,7 +454,9 @@ class Spline:
         samples: Optional[int] = None,
         filter_channels: Optional[List[str]] = None,
         theme: str = "dark",
-        title: Optional[str] = None
+        title: Optional[str] = None,
+        width: Optional[float] = None,
+        height: Optional[float] = None
     ) -> None:
         """Save a plot of the spline's channels to a file.
         
@@ -456,12 +466,14 @@ class Spline:
             filter_channels: Optional list of channel names to include (all if None)
             theme: Plot theme - 'light' or 'dark'
             title: Optional title for the plot (defaults to spline name if available)
+            width: Optional figure width in inches (defaults to 10)
+            height: Optional figure height in inches (defaults to 6)
             
         Raises:
             ImportError: If matplotlib is not available
         """
         # Get the plot and save it
-        self.get_plot(samples, filter_channels, theme, title, save_path=filepath)
+        self.get_plot(samples, filter_channels, theme, title, save_path=filepath, width=width, height=height)
         
     def plot(
         self,
@@ -469,7 +481,9 @@ class Spline:
         filter_channels: Optional[List[str]] = None,
         theme: str = "dark",
         title: Optional[str] = None,
-        save_path: Optional[str] = None
+        save_path: Optional[str] = None,
+        width: Optional[float] = None,
+        height: Optional[float] = None
     ):
         """Plot the spline's channels.
         
@@ -479,6 +493,8 @@ class Spline:
             theme: Plot theme - 'light' or 'dark'
             title: Optional title for the plot (defaults to spline name if available)
             save_path: Optional file path to save the plot (e.g., 'plot.png')
+            width: Optional figure width in inches (defaults to 10)
+            height: Optional figure height in inches (defaults to 6)
             
         Returns:
             None - displays the plot
@@ -491,7 +507,7 @@ class Spline:
         except ImportError:
             raise ImportError("Plotting requires matplotlib. Install it with: pip install matplotlib")
             
-        fig = self.get_plot(samples, filter_channels, theme, title, save_path)
+        fig = self.get_plot(samples, filter_channels, theme, title, save_path, width, height)
         plt.show()
         return None
         
@@ -501,6 +517,19 @@ class Spline:
         filter_channels: Optional[List[str]] = None, 
         theme: str = "dark", 
         title: Optional[str] = None, 
-        save_path: Optional[str] = None
+        save_path: Optional[str] = None,
+        width: Optional[float] = None,
+        height: Optional[float] = None
     ):
-        self.plot(samples, filter_channels, theme, title, save_path)
+        """Display the plot (alias for plot method).
+        
+        Args:
+            samples: Number of evenly spaced samples to use (defaults to 100)
+            filter_channels: Optional list of channel names to include (all if None)
+            theme: Plot theme - 'light' or 'dark'
+            title: Optional title for the plot (defaults to spline name if available)
+            save_path: Optional file path to save the plot (e.g., 'plot.png')
+            width: Optional figure width in inches (defaults to 10)
+            height: Optional figure height in inches (defaults to 6)
+        """
+        self.plot(samples, filter_channels, theme, title, save_path, width, height)
